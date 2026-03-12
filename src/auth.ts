@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { getSecrets, type AppSecrets } from './secrets.js';
 import { getCloudEndpoints, getDefaultClientId } from './cloud-config.js';
+import { getCustomToolDefinitions } from './custom-tools.js';
 
 // Ok so this is a hack to lazily import keytar only when needed
 // since --http mode may not need it at all, and keytar can be a pain to install (looking at you alpine)
@@ -145,6 +146,18 @@ function buildScopesFromEndpoints(
       endpoint.workScopes.forEach((scope) => scopesSet.add(scope));
     }
   });
+
+  for (const tool of getCustomToolDefinitions()) {
+    if (enabledToolsRegex && !enabledToolsRegex.test(tool.name)) {
+      continue;
+    }
+
+    if (tool.requiresOrgMode && !includeWorkAccountScopes) {
+      continue;
+    }
+
+    tool.scopes.forEach((scope) => scopesSet.add(scope));
+  }
 
   // Scope hierarchy: if we have BOTH a higher scope (ReadWrite) AND lower scopes (Read),
   // keep only the higher scope since it includes the permissions of the lower scopes.

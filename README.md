@@ -136,7 +136,8 @@ delete-outlook-contact</sub>
 **Teams & Chats**
 <sub>list-chats, get-chat, list-chat-messages, get-chat-message, send-chat-message, list-chat-message-replies,
 reply-to-chat-message, list-joined-teams, get-team, list-team-channels, get-team-channel, list-channel-messages,
-get-channel-message, send-channel-message, list-team-members</sub>
+get-channel-message, send-channel-message, list-team-members, list-chat-members, get-chat-details,
+find-chats-by-participant, list-recent-chats, get-chat-context, search-messages, list-channel-members</sub>
 
 **Online Meetings & Transcripts**
 <sub>list-online-meetings, list-meeting-transcripts, get-meeting-transcript-content</sub>
@@ -152,7 +153,406 @@ get-sharepoint-sites-delta</sub>
 send-shared-mailbox-mail</sub>
 
 **User Management**  
-<sub>list-users</sub>
+<sub>list-users, search-users, resolve-person, list-user-presence</sub>
+
+### Canvas-Oriented Resolution Tools
+
+This fork includes a custom resolution layer aimed at chat-first UX in Canvas and other agents. These tools do not
+change the raw Graph tool payloads; they add normalized, ranked responses on top:
+
+- `search-users`: ranked people resolution by display name, mail, and UPN
+- `list-chat-members`: normalized chat roster for 1:1, group, and meeting chats
+- `get-chat-details`: normalized chat metadata with optional inline members
+- `find-chats-by-participant`: ranks the best chat targets for a user
+- `list-recent-chats`: recent chats with opaque pagination
+- `get-chat-context`: chat metadata, members, and recent message previews in one call
+- `search-messages`: Teams chat search with optional participant narrowing
+- `resolve-person`: high-confidence single-person resolver with structured ambiguity
+- `list-user-presence`: batch Teams presence lookup
+- `list-channel-members`: normalized Teams channel roster
+
+### Custom Tool Scopes
+
+These custom tools request scopes independently from `endpoints.json` so they work with filtered tool sets:
+
+| Tool | Scopes |
+| --- | --- |
+| `search-users`, `resolve-person` | `User.Read.All` |
+| `list-chat-members`, `get-chat-details`, `list-recent-chats` | `Chat.Read` |
+| `find-chats-by-participant` | `Chat.Read`, `User.Read.All` |
+| `get-chat-context` | `Chat.Read`, `ChatMessage.Read` |
+| `search-messages` | `Chat.Read`, `ChannelMessage.Read.All` |
+| `list-user-presence` | `Presence.Read.All` |
+| `list-channel-members` | `ChannelMember.Read.All` |
+
+### Custom Tool Contracts
+
+All Canvas-oriented custom tools follow these response conventions:
+
+- camelCase field names
+- object responses, never raw top-level arrays
+- `items` for collections
+- deterministic ordering and ranking
+- opaque `cursor` / `nextCursor` values
+- structured identity objects instead of raw Graph fragments
+- MCP-friendly structured errors with `isError: true`
+
+#### Error Contract
+
+Custom tools return structured JSON errors in the response body:
+
+```json
+{
+  "error": "ambiguous_match",
+  "message": "Multiple users matched the email address.",
+  "candidates": [
+    {
+      "userId": "user-123",
+      "label": "Juan Casiraghi <juan@company.com>",
+      "rank": 1
+    }
+  ]
+}
+```
+
+Standard error codes currently used:
+
+- `user_not_found`
+- `chat_not_found`
+- `chat_members_unavailable`
+- `insufficient_scope`
+- `ambiguous_match`
+- `unsupported_chat_type`
+- `unsupported_scope`
+- `invalid_cursor`
+
+#### `search-users`
+
+Input:
+
+```json
+{
+  "query": "Juan Casiraghi",
+  "limit": 10
+}
+```
+
+Output:
+
+```json
+{
+  "items": [
+    {
+      "userId": "user-123",
+      "displayName": "Juan Casiraghi",
+      "givenName": "Juan",
+      "surname": "Casiraghi",
+      "email": "juan@company.com",
+      "userPrincipalName": "juan@company.com",
+      "jobTitle": null,
+      "department": null,
+      "matchScore": 0.98,
+      "matchReasons": ["displayName_exact"]
+    }
+  ]
+}
+```
+
+#### `list-chat-members`
+
+Input:
+
+```json
+{
+  "chatId": "19:...@thread.v2"
+}
+```
+
+Output:
+
+```json
+{
+  "chatId": "19:...@thread.v2",
+  "members": [
+    {
+      "memberId": "membership-1",
+      "userId": "user-123",
+      "displayName": "Juan Casiraghi",
+      "email": "juan@company.com",
+      "userPrincipalName": "juan@company.com",
+      "roles": ["owner"],
+      "membershipType": "owner"
+    }
+  ]
+}
+```
+
+#### `get-chat-details`
+
+Input:
+
+```json
+{
+  "chatId": "19:...@thread.v2",
+  "includeMembers": true
+}
+```
+
+Output:
+
+```json
+{
+  "id": "19:...@thread.v2",
+  "chatType": "oneOnOne",
+  "topic": null,
+  "lastUpdatedDateTime": "2026-03-12T12:00:00Z",
+  "webUrl": "https://teams.microsoft.com/...",
+  "memberCount": 2,
+  "members": [
+    {
+      "userId": "user-123",
+      "displayName": "Juan Casiraghi",
+      "email": "juan@company.com"
+    }
+  ]
+}
+```
+
+#### `find-chats-by-participant`
+
+Input:
+
+```json
+{
+  "email": "juan@company.com",
+  "includeGroupChats": true,
+  "limit": 10
+}
+```
+
+Output:
+
+```json
+{
+  "items": [
+    {
+      "chat": {
+        "id": "19:...@thread.v2",
+        "chatType": "oneOnOne",
+        "topic": null,
+        "lastUpdatedDateTime": "2026-03-12T12:00:00Z",
+        "webUrl": "https://teams.microsoft.com/...",
+        "memberCount": 2
+      },
+      "members": [
+        {
+          "userId": "user-123",
+          "displayName": "Juan Casiraghi",
+          "email": "juan@company.com"
+        }
+      ],
+      "matchType": "exact_one_on_one",
+      "rank": 1,
+      "matchReasons": ["participant_exact", "one_on_one", "recent"]
+    }
+  ]
+}
+```
+
+#### `list-recent-chats`
+
+Input:
+
+```json
+{
+  "limit": 20,
+  "includeMembers": true
+}
+```
+
+Output:
+
+```json
+{
+  "items": [
+    {
+      "id": "19:...@thread.v2",
+      "chatType": "group",
+      "topic": "AI Leads",
+      "lastUpdatedDateTime": "2026-03-12T12:00:00Z",
+      "webUrl": null,
+      "memberCount": 4,
+      "members": [
+        {
+          "userId": "user-123",
+          "displayName": "Juan Casiraghi",
+          "email": "juan@company.com"
+        }
+      ]
+    }
+  ],
+  "nextCursor": "opaque-cursor"
+}
+```
+
+If member expansion fails for a specific chat, that item is still returned with:
+
+```json
+{
+  "members": [],
+  "membersUnavailable": true,
+  "membersError": "chat_members_unavailable"
+}
+```
+
+#### `get-chat-context`
+
+Input:
+
+```json
+{
+  "chatId": "19:...@thread.v2",
+  "messageLimit": 10
+}
+```
+
+Output:
+
+```json
+{
+  "chat": {
+    "id": "19:...@thread.v2",
+    "chatType": "oneOnOne",
+    "topic": null,
+    "lastUpdatedDateTime": "2026-03-12T12:00:00Z",
+    "memberCount": 2
+  },
+  "members": [
+    {
+      "userId": "user-123",
+      "displayName": "Juan Casiraghi",
+      "email": "juan@company.com"
+    }
+  ],
+  "recentMessages": [
+    {
+      "id": "msg-1",
+      "from": {
+        "userId": "user-123",
+        "displayName": "Juan Casiraghi"
+      },
+      "createdDateTime": "2026-03-12T11:59:00Z",
+      "bodyPreview": "deploy prod tonight"
+    }
+  ]
+}
+```
+
+#### `search-messages`
+
+Input:
+
+```json
+{
+  "query": "deploy prod",
+  "participantUserId": "user-123",
+  "scope": "chats",
+  "limit": 20
+}
+```
+
+Output:
+
+```json
+{
+  "items": [
+    {
+      "chatId": "19:...@thread.v2",
+      "messageId": "msg-1",
+      "chatType": "group",
+      "topic": "AI Leads",
+      "from": {
+        "userId": "user-123",
+        "displayName": "Juan Casiraghi"
+      },
+      "createdDateTime": "2026-03-12T11:59:00Z",
+      "bodyPreview": "deploy prod tonight"
+    }
+  ]
+}
+```
+
+Only `scope: "chats"` is currently supported.
+
+#### `resolve-person`
+
+Input:
+
+```json
+{
+  "query": "Juan Casiraghi"
+}
+```
+
+Output is either a single normalized user object or an `ambiguous_match` / `user_not_found` error.
+
+#### `list-user-presence`
+
+Input:
+
+```json
+{
+  "userIds": ["user-123", "user-456"]
+}
+```
+
+Output:
+
+```json
+{
+  "items": [
+    {
+      "userId": "user-123",
+      "availability": "Available",
+      "activity": "Available",
+      "statusMessage": null
+    }
+  ]
+}
+```
+
+#### `list-channel-members`
+
+Input:
+
+```json
+{
+  "teamId": "team-123",
+  "channelId": "channel-456"
+}
+```
+
+Output:
+
+```json
+{
+  "teamId": "team-123",
+  "channelId": "channel-456",
+  "members": [
+    {
+      "userId": "user-123",
+      "displayName": "Juan Casiraghi",
+      "email": "juan@company.com",
+      "roles": ["member", "owner"],
+      "membershipType": "owner",
+      "membershipOrigins": ["direct", "indirect"]
+    }
+  ]
+}
+```
+
+For shared channels, duplicate memberships are deduplicated by identity and their origin hints are retained in
+`membershipOrigins`.
 
 ## Organization/Work Mode
 
@@ -644,6 +1044,13 @@ If you're having problems or need help:
 - Start a [discussion](https://github.com/softeria/ms-365-mcp-server/discussions)
 - Email: eirikb@eirikb.no
 - Discord: https://discord.gg/WvGVNScrAZ or @eirikb
+
+## Maintainers
+
+This fork builds on the original work by Softeria.
+
+- Original upstream: Softeria / Eirik Brevik
+- Fork maintainers: Santiago Benvenuto and OpenAI Codex
 
 ## License
 

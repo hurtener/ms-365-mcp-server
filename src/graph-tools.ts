@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { TOOL_CATEGORIES } from './tool-categories.js';
 import { getRequestTokens } from './request-context.js';
+import { buildCustomToolRegistry, registerCustomTools } from './custom-tools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -558,6 +559,16 @@ export function registerGraphTools(
     }
   }
 
+  registeredCount += registerCustomTools(
+    server,
+    graphClient,
+    enabledToolsRegex,
+    orgMode,
+    authManager,
+    multiAccount,
+    accountNames
+  );
+
   if (multiAccount) {
     logger.info('Multi-account mode: "account" parameter injected into all tool schemas');
   }
@@ -573,11 +584,39 @@ export function registerGraphTools(
 
 function buildToolsRegistry(
   readOnly: boolean,
-  orgMode: boolean
-): Map<string, { tool: (typeof api.endpoints)[0]; config: EndpointConfig | undefined }> {
+  orgMode: boolean,
+  graphClient: GraphClient,
+  enabledToolsRegex?: RegExp,
+  authManager?: AuthManager,
+  multiAccount: boolean = false,
+  accountNames: string[] = []
+): Map<
+  string,
+  | { kind: 'generated'; tool: (typeof api.endpoints)[0]; config: EndpointConfig | undefined }
+  | {
+      kind: 'custom';
+      description: string;
+      method: string;
+      path: string;
+      readOnlyHint: boolean;
+      openWorldHint: boolean;
+      destructiveHint?: boolean;
+      handler: (params: Record<string, unknown>) => Promise<CallToolResult>;
+    }
+> {
   const toolsMap = new Map<
     string,
-    { tool: (typeof api.endpoints)[0]; config: EndpointConfig | undefined }
+    | { kind: 'generated'; tool: (typeof api.endpoints)[0]; config: EndpointConfig | undefined }
+    | {
+        kind: 'custom';
+        description: string;
+        method: string;
+        path: string;
+        readOnlyHint: boolean;
+        openWorldHint: boolean;
+        destructiveHint?: boolean;
+        handler: (params: Record<string, unknown>) => Promise<CallToolResult>;
+      }
   >();
 
   for (const tool of api.endpoints) {
@@ -591,7 +630,38 @@ function buildToolsRegistry(
       continue;
     }
 
-    toolsMap.set(tool.alias, { tool, config: endpointConfig });
+    if (enabledToolsRegex && !enabledToolsRegex.test(tool.alias)) {
+      continue;
+    }
+
+    toolsMap.set(tool.alias, { kind: 'generated', tool, config: endpointConfig });
+  }
+
+  const customTools = buildCustomToolRegistry(
+    graphClient,
+    authManager,
+    multiAccount,
+    accountNames
+  );
+  for (const [name, tool] of customTools) {
+    if (!orgMode) {
+      continue;
+    }
+
+    if (enabledToolsRegex && !enabledToolsRegex.test(name)) {
+      continue;
+    }
+
+    toolsMap.set(name, {
+      kind: 'custom',
+      description: tool.description,
+      method: tool.method,
+      path: tool.path,
+      readOnlyHint: tool.readOnlyHint,
+      openWorldHint: tool.openWorldHint,
+      destructiveHint: tool.destructiveHint,
+      handler: tool.handler,
+    });
   }
 
   return toolsMap;
@@ -601,11 +671,33 @@ export function registerDiscoveryTools(
   server: McpServer,
   graphClient: GraphClient,
   readOnly: boolean = false,
+  enabledToolsPattern?: string,
   orgMode: boolean = false,
   authManager?: AuthManager,
-  _multiAccount: boolean = false
+  multiAccount: boolean = false,
+  accountNames: string[] = []
 ): void {
-  const toolsRegistry = buildToolsRegistry(readOnly, orgMode);
+  let enabledToolsRegex: RegExp | undefined;
+  if (enabledToolsPattern) {
+    try {
+      enabledToolsRegex = new RegExp(enabledToolsPattern, 'i');
+      logger.info(`Discovery tool filtering enabled with pattern: ${enabledToolsPattern}`);
+    } catch {
+      logger.error(
+        `Invalid discovery tool filter regex pattern: ${enabledToolsPattern}. Ignoring filter.`
+      );
+    }
+  }
+
+  const toolsRegistry = buildToolsRegistry(
+    readOnly,
+    orgMode,
+    graphClient,
+    enabledToolsRegex,
+    authManager,
+    multiAccount,
+    accountNames
+  );
   logger.info(`Discovery mode: ${toolsRegistry.size} tools available in registry`);
 
   server.tool(
@@ -641,25 +733,37 @@ export function registerDiscoveryTools(
       const queryLower = query?.toLowerCase();
       const categoryDef = category ? TOOL_CATEGORIES[category] : undefined;
 
-      for (const [name, { tool, config }] of toolsRegistry) {
+      for (const [name, entry] of toolsRegistry) {
         if (categoryDef && !categoryDef.pattern.test(name)) {
           continue;
         }
 
         if (queryLower) {
           const searchText =
-            `${name} ${tool.path} ${tool.description || ''} ${config?.llmTip || ''}`.toLowerCase();
+            entry.kind === 'generated'
+              ? `${name} ${entry.tool.path} ${entry.tool.description || ''} ${entry.config?.llmTip || ''}`.toLowerCase()
+              : `${name} ${entry.path} ${entry.description}`.toLowerCase();
           if (!searchText.includes(queryLower)) {
             continue;
           }
         }
 
-        results.push({
-          name,
-          method: tool.method.toUpperCase(),
-          path: tool.path,
-          description: tool.description || `${tool.method.toUpperCase()} ${tool.path}`,
-        });
+        if (entry.kind === 'generated') {
+          results.push({
+            name,
+            method: entry.tool.method.toUpperCase(),
+            path: entry.tool.path,
+            description:
+              entry.tool.description || `${entry.tool.method.toUpperCase()} ${entry.tool.path}`,
+          });
+        } else {
+          results.push({
+            name,
+            method: entry.method.toUpperCase(),
+            path: entry.path,
+            description: entry.description,
+          });
+        }
 
         if (results.length >= maxLimit) break;
       }
@@ -715,6 +819,10 @@ export function registerDiscoveryTools(
           ],
           isError: true,
         };
+      }
+
+      if (toolData.kind === 'custom') {
+        return toolData.handler(parameters);
       }
 
       return executeGraphTool(toolData.tool, toolData.config, graphClient, parameters, authManager);

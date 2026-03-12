@@ -79,9 +79,11 @@ class MicrosoftGraphServer {
         server,
         this.graphClient!,
         this.options.readOnly,
+        this.options.enabledTools,
         this.options.orgMode,
         this.authManager,
-        this.multiAccount
+        this.multiAccount,
+        this.accountNames
       );
     } else {
       registerGraphTools(

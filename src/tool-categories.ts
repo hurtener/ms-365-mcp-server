@@ -30,7 +30,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   },
   work: {
     name: 'work',
-    pattern: /team|channel|chat|sharepoint|planner|site|list|shared|search|query/i,
+    pattern: /team|channel|chat|sharepoint|planner|site|list|shared|search|query|presence|resolve-person/i,
     description: 'Organization/work tools (Teams, SharePoint, shared mailboxes, search)',
     requiresOrgMode: true,
   },
@@ -56,12 +56,12 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   },
   search: {
     name: 'search',
-    pattern: /search|query/i,
+    pattern: /search|query|resolve-person/i,
     description: 'Microsoft Search capabilities',
   },
   users: {
     name: 'users',
-    pattern: /user|list-users/i,
+    pattern: /user|list-users|search-users|resolve-person|presence/i,
     description: 'User directory access',
     requiresOrgMode: true,
   },
