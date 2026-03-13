@@ -285,7 +285,7 @@ async function fetchChatMessages(
   }));
 }
 
-async function searchMessagesInternal(
+export async function searchMessagesInternal(
   context: CustomToolHandlerContext,
   query: string,
   participantUserId: string | undefined,

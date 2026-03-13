@@ -11,6 +11,7 @@ interface GraphRequestOptions {
   method?: string;
   body?: string;
   rawResponse?: boolean;
+  responseType?: 'default' | 'buffer';
   includeHeaders?: boolean;
   excludeResponse?: boolean;
   accessToken?: string;
@@ -96,6 +97,10 @@ class GraphClient {
         throw new Error(
           `Microsoft Graph API error: ${response.status} ${response.statusText} - ${await response.text()}`
         );
+      }
+
+      if (options.responseType === 'buffer') {
+        return Buffer.from(await response.arrayBuffer());
       }
 
       const text = await response.text();

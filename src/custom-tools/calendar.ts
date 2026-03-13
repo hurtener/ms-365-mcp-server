@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  buildCalendarEventLabel,
+  buildToolErrorResult,
   CalendarParticipant,
   CustomToolDefinition,
   CustomToolHandlerContext,
@@ -40,6 +42,7 @@ type CalendarEventSummary = {
   bodyPreview: string | null;
   webUrl: string | null;
   isOnlineMeeting: boolean;
+  label: string;
 };
 
 type ResolvedAttendeeInput = {
@@ -70,23 +73,21 @@ const AVAILABLE_ATTENDEE_STATUSES = new Set(['free', 'workingElsewhere']);
 
 function calendarErrorResult(
   context: CustomToolHandlerContext,
+  requiredScopes: string[],
   error: unknown,
   fallbackMessage: string
 ) {
-  const extra =
-    error instanceof GraphToolError
-      ? {
-          message: error.message || fallbackMessage,
-          ...(error.details ?? {}),
-        }
-      : {
-          message: (error as Error)?.message ?? fallbackMessage,
-        };
-  return errorResult(context.graphClient, inferErrorCode(error, fallbackMessage), extra);
+  return buildToolErrorResult(
+    context.graphClient,
+    requiredScopes,
+    context.accessToken,
+    error,
+    fallbackMessage
+  );
 }
 
 function normalizeEvent(entry: JsonRecord): CalendarEventSummary {
-  return {
+  const normalized = {
     id: getString(entry, 'id') ?? '',
     subject: getString(entry, 'subject'),
     start: getString(asRecord(entry.start), 'dateTime'),
@@ -104,6 +105,10 @@ function normalizeEvent(entry: JsonRecord): CalendarEventSummary {
     bodyPreview: buildBodyPreview(entry),
     webUrl: getString(entry, 'webLink') ?? getString(entry, 'webUrl'),
     isOnlineMeeting: entry.isOnlineMeeting === true,
+  };
+  return {
+    ...normalized,
+    label: buildCalendarEventLabel(normalized),
   };
 }
 
@@ -325,6 +330,26 @@ async function createCalendarEventInternal(
   return normalizeEvent(response);
 }
 
+async function updateCalendarEventInternal(
+  context: CustomToolHandlerContext,
+  eventId: string,
+  calendarId: string | undefined,
+  start: string,
+  end: string
+): Promise<CalendarEventSummary> {
+  const endpoint = calendarId
+    ? `/me/calendars/${encodePathSegment(calendarId)}/events/${encodePathSegment(eventId)}`
+    : `/me/events/${encodePathSegment(eventId)}`;
+  const response = await graphRequest<JsonRecord>(context, endpoint, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      start: { dateTime: start, timeZone: 'UTC' },
+      end: { dateTime: end, timeZone: 'UTC' },
+    }),
+  });
+  return normalizeEvent(response);
+}
+
 async function respondToCalendarEventInternal(
   context: CustomToolHandlerContext,
   responseAction: 'accept' | 'decline' | 'tentativelyAccept',
@@ -458,6 +483,38 @@ async function findAvailabilityInternal(
   };
 }
 
+function selectMeetingSuggestion(
+  items: Array<MeetingSuggestionSummary & Record<string, unknown>>,
+  allowPartialAvailability: boolean
+) {
+  const bestFullAvailability = items.find((item) => item.allAttendeesAvailable === true);
+  return bestFullAvailability ?? (allowPartialAvailability ? items[0] : undefined);
+}
+
+function buildRescheduleWindow(
+  originalStart: string,
+  originalEnd: string
+): {
+  windowStart: string;
+  windowEnd: string;
+} {
+  const startMs = Date.parse(originalStart);
+  const endMs = Date.parse(originalEnd);
+  const durationMs = Math.max(endMs - startMs, 15 * 60 * 1000);
+  return {
+    windowStart: new Date(startMs).toISOString(),
+    windowEnd: new Date(startMs + Math.max(durationMs, 7 * 24 * 60 * 60 * 1000)).toISOString(),
+  };
+}
+
+function isSameSlot(
+  candidate: Pick<MeetingSuggestionSummary, 'start' | 'end'>,
+  start: string | null,
+  end: string | null
+): boolean {
+  return candidate.start === start && candidate.end === end;
+}
+
 export const calendarToolDefinitions: CustomToolDefinition[] = [
   {
     name: 'search-calendar-events',
@@ -561,6 +618,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       sendResponse: z.boolean().default(true).describe('Send the RSVP response to the organizer'),
       comment: z.string().optional().describe('Optional response comment'),
       calendarId: z.string().min(1).optional().describe('Optional explicit calendar ID'),
+      previewOnly: z.boolean().optional().describe('Preview without sending the response'),
     },
     handler: async (params, context) => {
       try {
@@ -568,6 +626,16 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
         const sendResponse = getOptionalBoolean(params, 'sendResponse', true);
         const comment = getOptionalString(params, 'comment');
         const calendarId = getOptionalString(params, 'calendarId');
+        if (getOptionalBoolean(params, 'previewOnly', false)) {
+          return success(context.graphClient, {
+            previewOnly: true,
+            eventId,
+            response: 'accepted',
+            sendResponse,
+            comment: comment ?? null,
+            wouldRespond: true,
+          });
+        }
         return success(
           context.graphClient,
           await respondToCalendarEventInternal(
@@ -580,7 +648,12 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
           )
         );
       } catch (error) {
-        return calendarErrorResult(context, error, 'Unable to accept calendar event.');
+        return calendarErrorResult(
+          context,
+          ['Calendars.ReadWrite'],
+          error,
+          'Unable to accept calendar event.'
+        );
       }
     },
   },
@@ -599,6 +672,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       sendResponse: z.boolean().default(true).describe('Send the RSVP response to the organizer'),
       comment: z.string().optional().describe('Optional response comment'),
       calendarId: z.string().min(1).optional().describe('Optional explicit calendar ID'),
+      previewOnly: z.boolean().optional().describe('Preview without sending the response'),
     },
     handler: async (params, context) => {
       try {
@@ -606,6 +680,16 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
         const sendResponse = getOptionalBoolean(params, 'sendResponse', true);
         const comment = getOptionalString(params, 'comment');
         const calendarId = getOptionalString(params, 'calendarId');
+        if (getOptionalBoolean(params, 'previewOnly', false)) {
+          return success(context.graphClient, {
+            previewOnly: true,
+            eventId,
+            response: 'declined',
+            sendResponse,
+            comment: comment ?? null,
+            wouldRespond: true,
+          });
+        }
         return success(
           context.graphClient,
           await respondToCalendarEventInternal(
@@ -618,7 +702,12 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
           )
         );
       } catch (error) {
-        return calendarErrorResult(context, error, 'Unable to decline calendar event.');
+        return calendarErrorResult(
+          context,
+          ['Calendars.ReadWrite'],
+          error,
+          'Unable to decline calendar event.'
+        );
       }
     },
   },
@@ -637,6 +726,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       sendResponse: z.boolean().default(true).describe('Send the RSVP response to the organizer'),
       comment: z.string().optional().describe('Optional response comment'),
       calendarId: z.string().min(1).optional().describe('Optional explicit calendar ID'),
+      previewOnly: z.boolean().optional().describe('Preview without sending the response'),
     },
     handler: async (params, context) => {
       try {
@@ -644,6 +734,16 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
         const sendResponse = getOptionalBoolean(params, 'sendResponse', true);
         const comment = getOptionalString(params, 'comment');
         const calendarId = getOptionalString(params, 'calendarId');
+        if (getOptionalBoolean(params, 'previewOnly', false)) {
+          return success(context.graphClient, {
+            previewOnly: true,
+            eventId,
+            response: 'tentativelyAccepted',
+            sendResponse,
+            comment: comment ?? null,
+            wouldRespond: true,
+          });
+        }
         return success(
           context.graphClient,
           await respondToCalendarEventInternal(
@@ -656,7 +756,12 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
           )
         );
       } catch (error) {
-        return calendarErrorResult(context, error, 'Unable to tentatively accept calendar event.');
+        return calendarErrorResult(
+          context,
+          ['Calendars.ReadWrite'],
+          error,
+          'Unable to tentatively accept calendar event.'
+        );
       }
     },
   },
@@ -687,7 +792,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
     name: 'suggest-meeting-times',
     description: 'Return richer meeting-time suggestions for scheduling flows.',
     method: 'POST',
-    path: '/me/events',
+    path: '/me/findMeetingTimes',
     requiresOrgMode: false,
     readOnlyHint: true,
     openWorldHint: true,
@@ -736,6 +841,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       location: z.string().optional().describe('Optional location display name'),
       isOnlineMeeting: z.boolean().optional().describe('Create as an online meeting'),
       calendarId: z.string().min(1).optional().describe('Optional explicit calendar ID'),
+      previewOnly: z.boolean().optional().describe('Preview without creating the event'),
     },
     handler: async (params, context) => {
       const subject = getRequiredString(params, 'subject');
@@ -744,6 +850,21 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       const calendarId = getOptionalString(params, 'calendarId');
       const attendeesInput = getArray(params as JsonRecord, 'attendees');
       const resolvedAttendees = await resolveAttendeeInputs(context, attendeesInput);
+      if (getOptionalBoolean(params, 'previewOnly', false)) {
+        return success(context.graphClient, {
+          previewOnly: true,
+          action: 'create-calendar-event-with-attendees',
+          wouldCreate: true,
+          subject,
+          start,
+          end,
+          attendees: resolvedAttendees.map((attendee) => ({
+            email: attendee.address,
+            displayName: attendee.displayName,
+          })),
+          calendarId: calendarId ?? null,
+        });
+      }
 
       return success(
         context.graphClient,
@@ -791,6 +912,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       location: z.string().optional().describe('Optional location display name'),
       isOnlineMeeting: z.boolean().optional().describe('Create as an online meeting'),
       calendarId: z.string().min(1).optional().describe('Optional explicit calendar ID'),
+      previewOnly: z.boolean().optional().describe('Preview without creating the event'),
     },
     handler: async (params, context) => {
       try {
@@ -820,9 +942,7 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
           true
         );
         const items = suggestionsResponse.items ?? [];
-        const bestFullAvailability = items.find((item) => item.allAttendeesAvailable === true);
-        const selectedSlot =
-          bestFullAvailability ?? (allowPartialAvailability ? items[0] : undefined);
+        const selectedSlot = selectMeetingSuggestion(items, allowPartialAvailability);
 
         if (!selectedSlot) {
           return errorResult(context.graphClient, 'not_found', {
@@ -836,6 +956,28 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
               allAttendeesAvailable: item.allAttendeesAvailable,
               blockedAttendeeCount: item.blockedAttendeeCount,
             })),
+          });
+        }
+
+        if (getOptionalBoolean(params, 'previewOnly', false)) {
+          return success(context.graphClient, {
+            previewOnly: true,
+            action: 'create-calendar-event-from-availability',
+            wouldCreate: true,
+            subject,
+            attendees: resolvedAttendees.map((attendee) => ({
+              email: attendee.address,
+              displayName: attendee.displayName,
+            })),
+            chosenSlot: {
+              start: selectedSlot.start,
+              end: selectedSlot.end,
+              score: selectedSlot.score,
+              rankingScore: selectedSlot.rankingScore,
+              allAttendeesAvailable: selectedSlot.allAttendeesAvailable,
+              availableAttendeeCount: selectedSlot.availableAttendeeCount,
+              blockedAttendeeCount: selectedSlot.blockedAttendeeCount,
+            },
           });
         }
 
@@ -863,8 +1005,118 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       } catch (error) {
         return calendarErrorResult(
           context,
+          ['Calendars.ReadWrite', 'User.Read.All'],
           error,
           'Unable to create calendar event from availability.'
+        );
+      }
+    },
+  },
+  {
+    name: 'reschedule-calendar-event',
+    description: 'Find a better slot for an existing event and optionally move it there.',
+    method: 'PATCH',
+    path: '/me/events/{eventId}',
+    requiresOrgMode: false,
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: true,
+    scopes: ['Calendars.ReadWrite', 'User.Read.All'],
+    schema: {
+      eventId: z.string().min(1).describe('Event ID'),
+      calendarId: z.string().min(1).optional().describe('Optional explicit calendar ID'),
+      windowStart: z.string().min(1).optional().describe('Optional scheduling window start'),
+      windowEnd: z.string().min(1).optional().describe('Optional scheduling window end'),
+      durationMinutes: z.number().int().min(15).max(480).optional().describe('Override duration'),
+      allowPartialAvailability: z
+        .boolean()
+        .optional()
+        .describe('Allow a partially-available slot when no fully-free slot exists'),
+      previewOnly: z.boolean().optional().describe('Preview without updating the event'),
+    },
+    handler: async (params, context) => {
+      try {
+        const eventId = getRequiredString(params, 'eventId');
+        const calendarId = getOptionalString(params, 'calendarId');
+        const originalEvent = await getCalendarEventInternal(context, eventId, calendarId);
+        const attendees = originalEvent.attendees
+          .map((attendee) => attendee.email)
+          .filter(Boolean) as string[];
+        if (attendees.length === 0) {
+          return errorResult(context.graphClient, 'unsupported_operation', {
+            message: 'Event has no resolvable attendees to reschedule against.',
+          });
+        }
+        if (!originalEvent.start || !originalEvent.end) {
+          throw new GraphToolError(
+            'unsupported_operation',
+            'Event is missing a valid start/end time.'
+          );
+        }
+        const defaultWindow = buildRescheduleWindow(originalEvent.start, originalEvent.end);
+        const windowStart = getOptionalString(params, 'windowStart') ?? defaultWindow.windowStart;
+        const windowEnd = getOptionalString(params, 'windowEnd') ?? defaultWindow.windowEnd;
+        const originalDurationMinutes =
+          originalEvent.start && originalEvent.end
+            ? Math.max(
+                15,
+                Math.round(
+                  (Date.parse(originalEvent.end) - Date.parse(originalEvent.start)) / 60000
+                )
+              )
+            : 30;
+        const durationMinutes = getOptionalNumber(
+          params,
+          'durationMinutes',
+          originalDurationMinutes
+        );
+        const allowPartialAvailability = getOptionalBoolean(
+          params,
+          'allowPartialAvailability',
+          false
+        );
+        const suggestionsResponse = await findAvailabilityInternal(
+          context,
+          attendees,
+          windowStart,
+          windowEnd,
+          durationMinutes,
+          true
+        );
+        const items = (suggestionsResponse.items ?? []).filter(
+          (item) => !isSameSlot(item, originalEvent.start, originalEvent.end)
+        );
+        const selectedSlot = selectMeetingSuggestion(items, allowPartialAvailability);
+        if (!selectedSlot) {
+          return errorResult(context.graphClient, 'not_found', {
+            message: 'No suitable slot was found to reschedule the event.',
+          });
+        }
+        if (getOptionalBoolean(params, 'previewOnly', false)) {
+          return success(context.graphClient, {
+            previewOnly: true,
+            originalEvent,
+            chosenSlot: selectedSlot,
+          });
+        }
+        const updatedEvent = await updateCalendarEventInternal(
+          context,
+          eventId,
+          calendarId ?? undefined,
+          selectedSlot.start,
+          selectedSlot.end
+        );
+        return success(context.graphClient, {
+          originalEvent,
+          chosenSlot: selectedSlot,
+          updatedEvent,
+        });
+      } catch (error) {
+        return calendarErrorResult(
+          context,
+          ['Calendars.ReadWrite', 'User.Read.All'],
+          error,
+          'Unable to reschedule calendar event.'
         );
       }
     },

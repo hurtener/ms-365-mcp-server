@@ -57,6 +57,7 @@ export type IdentitySummary = {
   userId: string | null;
   displayName: string | null;
   email?: string | null;
+  label?: string | null;
 };
 
 export type NormalizedUser = {
@@ -68,6 +69,7 @@ export type NormalizedUser = {
   surname: string | null;
   jobTitle: string | null;
   department: string | null;
+  label: string;
 };
 
 export type RankedUser = NormalizedUser & {
@@ -84,6 +86,7 @@ export type NormalizedChatMember = {
   roles: string[];
   membershipType: string | null;
   membershipOrigins?: string[];
+  label?: string | null;
 };
 
 export type NormalizedChat = {
@@ -93,6 +96,7 @@ export type NormalizedChat = {
   lastUpdatedDateTime: string | null;
   webUrl?: string | null;
   memberCount: number;
+  label: string;
 };
 
 export type DriveItemSummary = {
@@ -106,6 +110,7 @@ export type DriveItemSummary = {
   lastModifiedDateTime: string | null;
   modifiedBy: IdentitySummary | null;
   webUrl: string | null;
+  label: string;
 };
 
 export type SiteSummary = {
@@ -114,6 +119,7 @@ export type SiteSummary = {
   displayName: string | null;
   webUrl: string | null;
   isPersonalSite: boolean;
+  label: string;
 };
 
 export type CalendarParticipant = {
@@ -121,6 +127,7 @@ export type CalendarParticipant = {
   displayName: string | null;
   email: string | null;
   matchScore?: number;
+  label?: string | null;
 };
 
 export type AvailabilitySlot = {
@@ -137,6 +144,7 @@ export type TaskSummary = {
   importance: string | null;
   dueDateTime: string | null;
   bodyPreview: string | null;
+  label: string;
 };
 
 export type MailSummary = {
@@ -147,6 +155,7 @@ export type MailSummary = {
   receivedDateTime: string | null;
   bodyPreview: string | null;
   hasAttachments: boolean;
+  label: string;
 };
 
 export type AttachmentSummary = {
@@ -155,6 +164,7 @@ export type AttachmentSummary = {
   contentType: string | null;
   size: number | null;
   isInline: boolean;
+  label: string;
 };
 
 export type ChatCandidate = {
@@ -256,6 +266,79 @@ export function inferErrorCode(error: unknown, fallbackMessage: string): string 
   return 'unsupported_operation';
 }
 
+function decodeJwtClaims(token: string | undefined): JsonRecord | null {
+  if (!token) {
+    return null;
+  }
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    return null;
+  }
+  try {
+    const payload = Buffer.from(parts[1]!, 'base64url').toString('utf8');
+    const parsed = JSON.parse(payload);
+    return typeof parsed === 'object' && parsed ? (parsed as JsonRecord) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getGrantedScopes(token: string | undefined): string[] {
+  const claims = decodeJwtClaims(token);
+  if (!claims) {
+    return [];
+  }
+  const delegated = typeof claims.scp === 'string' ? claims.scp.split(/\s+/).filter(Boolean) : [];
+  const roles = getArray(claims, 'roles').filter(
+    (value): value is string => typeof value === 'string'
+  );
+  return Array.from(new Set([...delegated, ...roles]));
+}
+
+function buildPermissionErrorDetails(
+  requiredScopes: string[],
+  accessToken: string | undefined
+): JsonRecord {
+  if (requiredScopes.length === 0) {
+    return {};
+  }
+  const grantedScopes = getGrantedScopes(accessToken);
+  const missingScopes =
+    grantedScopes.length > 0
+      ? requiredScopes.filter((scope) => !grantedScopes.includes(scope))
+      : undefined;
+  return {
+    requiredScopes,
+    ...(missingScopes && missingScopes.length > 0 ? { missingScopes } : {}),
+  };
+}
+
+export function buildToolErrorResult(
+  graphClient: GraphClient,
+  requiredScopes: string[],
+  accessToken: string | undefined,
+  error: unknown,
+  fallbackMessage: string
+): ToolResult {
+  const requestToken = getRequestTokens()?.accessToken;
+  const errorCode = inferErrorCode(error, fallbackMessage);
+  const extra: JsonRecord =
+    error instanceof GraphToolError
+      ? {
+          message: error.message,
+          ...(error.details ?? {}),
+        }
+      : {
+          message: (error as Error)?.message ?? fallbackMessage,
+        };
+
+  if (errorCode === 'insufficient_scope') {
+    Object.assign(extra, buildPermissionErrorDetails(requiredScopes, accessToken ?? requestToken));
+  }
+
+  return errorResult(graphClient, errorCode, extra);
+}
+
 export function buildSchemaWithCommonParams(
   schema: ToolSchema,
   multiAccount: boolean,
@@ -283,23 +366,22 @@ export function buildCustomToolHandler(
   context: CustomToolContext
 ): (params: Record<string, unknown>) => Promise<ToolResult> {
   return async (params) => {
+    let accountAccessToken: string | undefined;
     try {
-      const accountAccessToken = await resolveAccessToken(params, context.authManager);
+      accountAccessToken = await resolveAccessToken(params, context.authManager);
       return await definition.handler(params, {
         ...context,
         accessToken: accountAccessToken,
       });
     } catch (error) {
       logger.error(`Error in custom tool ${definition.name}: ${(error as Error).message}`);
-      if (error instanceof GraphToolError) {
-        return errorResult(context.graphClient, error.code, {
-          message: error.message,
-          ...(error.details ?? {}),
-        });
-      }
-      return errorResult(context.graphClient, inferErrorCode(error, 'Custom tool request failed'), {
-        message: (error as Error).message,
-      });
+      return buildToolErrorResult(
+        context.graphClient,
+        definition.scopes,
+        accountAccessToken,
+        error,
+        'Custom tool request failed'
+      );
     }
   };
 }
@@ -374,7 +456,7 @@ export async function buildDrivePathEndpoint(
 }
 
 export function normalizeUser(entry: JsonRecord): NormalizedUser {
-  return {
+  const normalized = {
     userId: getString(entry, 'id') ?? '',
     displayName: getString(entry, 'displayName'),
     email: getString(entry, 'mail'),
@@ -384,6 +466,10 @@ export function normalizeUser(entry: JsonRecord): NormalizedUser {
     jobTitle: getString(entry, 'jobTitle'),
     department: getString(entry, 'department'),
   };
+  return {
+    ...normalized,
+    label: buildUserLabel(normalized),
+  };
 }
 
 export function normalizeIdentity(value: JsonRecord | undefined): IdentitySummary | null {
@@ -392,7 +478,7 @@ export function normalizeIdentity(value: JsonRecord | undefined): IdentitySummar
   }
   const user = asRecord(value.user);
   const emailAddress = asRecord(value.emailAddress);
-  return {
+  const normalized = {
     userId: getString(user, 'id') ?? getString(value, 'userId'),
     displayName:
       getString(user, 'displayName') ??
@@ -402,6 +488,10 @@ export function normalizeIdentity(value: JsonRecord | undefined): IdentitySummar
       getString(emailAddress, 'address') ??
       getString(user, 'mail') ??
       getString(user, 'userPrincipalName'),
+  };
+  return {
+    ...normalized,
+    label: buildIdentityLabel(normalized),
   };
 }
 
@@ -532,7 +622,7 @@ export function normalizeChat(entry: JsonRecord): NormalizedChat {
     .map(asRecord)
     .filter((item): item is JsonRecord => !!item);
 
-  return {
+  const normalized = {
     id: getString(entry, 'id') ?? '',
     chatType: getString(entry, 'chatType') ?? 'unknown',
     topic: getString(entry, 'topic'),
@@ -540,13 +630,17 @@ export function normalizeChat(entry: JsonRecord): NormalizedChat {
     webUrl: getString(entry, 'webUrl'),
     memberCount: members.length,
   };
+  return {
+    ...normalized,
+    label: buildChatLabel(normalized),
+  };
 }
 
 export function normalizeDriveItem(entry: JsonRecord, fallbackPath?: string): DriveItemSummary {
   const parentReference = asRecord(entry.parentReference);
   const itemPath = getString(parentReference, 'path');
   const path = fallbackPath ?? toCanvasPath(itemPath, getString(entry, 'name'));
-  return {
+  const normalized = {
     id: getString(entry, 'id') ?? '',
     driveId: getString(parentReference, 'driveId'),
     name: getString(entry, 'name') ?? '',
@@ -558,6 +652,10 @@ export function normalizeDriveItem(entry: JsonRecord, fallbackPath?: string): Dr
     modifiedBy: normalizeIdentity(asRecord(entry.lastModifiedBy)),
     webUrl: getString(entry, 'webUrl'),
   };
+  return {
+    ...normalized,
+    label: buildDriveItemLabel(normalized),
+  };
 }
 
 export function normalizeSite(entry: JsonRecord): SiteSummary {
@@ -565,18 +663,22 @@ export function normalizeSite(entry: JsonRecord): SiteSummary {
   const displayName = getString(entry, 'displayName') ?? name;
   const webUrl = getString(entry, 'webUrl');
   const lowerUrl = normalizeString(webUrl);
-  return {
+  const normalized = {
     siteId: getString(entry, 'id') ?? '',
     name,
     displayName,
     webUrl,
     isPersonalSite: lowerUrl.includes('/personal/') || lowerUrl.includes('-my.sharepoint.com'),
   };
+  return {
+    ...normalized,
+    label: buildSiteLabel(normalized),
+  };
 }
 
 export function normalizeCalendarParticipant(entry: JsonRecord): CalendarParticipant {
   const emailAddress = asRecord(entry.emailAddress) ?? asRecord(entry);
-  return {
+  const normalized = {
     userId: getString(entry, 'id') ?? null,
     displayName: getString(emailAddress, 'name') ?? getString(entry, 'displayName'),
     email:
@@ -584,10 +686,14 @@ export function normalizeCalendarParticipant(entry: JsonRecord): CalendarPartici
       getString(entry, 'mail') ??
       getString(entry, 'userPrincipalName'),
   };
+  return {
+    ...normalized,
+    label: buildIdentityLabel(normalized),
+  };
 }
 
 export function normalizeTask(entry: JsonRecord, listId: string): TaskSummary {
-  return {
+  const normalized = {
     taskId: getString(entry, 'id') ?? '',
     listId,
     title: getString(entry, 'title') ?? '',
@@ -596,10 +702,14 @@ export function normalizeTask(entry: JsonRecord, listId: string): TaskSummary {
     dueDateTime: getString(asRecord(entry.dueDateTime), 'dateTime'),
     bodyPreview: buildBodyPreview(entry),
   };
+  return {
+    ...normalized,
+    label: buildTaskLabel(normalized),
+  };
 }
 
 export function normalizeMail(entry: JsonRecord): MailSummary {
-  return {
+  const normalized = {
     messageId: getString(entry, 'id') ?? '',
     subject: getString(entry, 'subject'),
     from: normalizeIdentity(asRecord(entry.from)),
@@ -608,15 +718,23 @@ export function normalizeMail(entry: JsonRecord): MailSummary {
     bodyPreview: getString(entry, 'bodyPreview') ?? buildBodyPreview(entry),
     hasAttachments: getBoolean(entry, 'hasAttachments') ?? false,
   };
+  return {
+    ...normalized,
+    label: buildMailLabel(normalized),
+  };
 }
 
 export function normalizeAttachment(entry: JsonRecord): AttachmentSummary {
-  return {
+  const normalized = {
     attachmentId: getString(entry, 'id') ?? '',
     name: getString(entry, 'name'),
     contentType: getString(entry, 'contentType'),
     size: getNumber(entry, 'size'),
     isInline: getBoolean(entry, 'isInline') ?? false,
+  };
+  return {
+    ...normalized,
+    label: normalized.name ?? 'Attachment',
   };
 }
 
@@ -652,6 +770,16 @@ export function extractStatusMessage(entry: JsonRecord): string | null {
   return getString(itemBody, 'content');
 }
 
+export function buildIdentityLabel(identity: {
+  displayName: string | null;
+  email?: string | null;
+}): string {
+  if (identity.displayName && identity.email) {
+    return `${identity.displayName} <${identity.email}>`;
+  }
+  return identity.displayName ?? identity.email ?? 'Unknown';
+}
+
 export function buildUserLabel(
   user: Pick<NormalizedUser, 'displayName' | 'email' | 'userPrincipalName'>
 ): string {
@@ -665,6 +793,48 @@ export function buildUserCandidateLabel(
     return `${user.displayName} <${user.email}>`;
   }
   return buildUserLabel(user);
+}
+
+export function buildDriveItemLabel(item: Pick<DriveItemSummary, 'name' | 'path'>): string {
+  if (!item.name) {
+    return item.path || '/';
+  }
+  const parentPath = normalizePath(item.path).split('/').slice(0, -1).join('/') || '/';
+  return parentPath === '/' ? item.name : `${item.name} (${parentPath})`;
+}
+
+export function buildSiteLabel(site: Pick<SiteSummary, 'displayName' | 'name'>): string {
+  return site.displayName ?? site.name ?? 'Unknown site';
+}
+
+export function buildTaskLabel(task: Pick<TaskSummary, 'title'>): string {
+  return task.title || 'Untitled task';
+}
+
+export function buildMailLabel(mail: Pick<MailSummary, 'subject' | 'from'>): string {
+  const subject = mail.subject ?? '(no subject)';
+  const sender = mail.from?.displayName ?? mail.from?.email;
+  return sender ? `${subject} - ${sender}` : subject;
+}
+
+export function buildChatLabel(
+  chat: Pick<NormalizedChat, 'topic' | 'chatType' | 'memberCount'>
+): string {
+  if (chat.topic) {
+    return chat.topic;
+  }
+  if (chat.chatType === 'oneOnOne') {
+    return 'Direct chat';
+  }
+  return `${chat.chatType} chat (${chat.memberCount})`;
+}
+
+export function buildCalendarEventLabel(event: {
+  subject: string | null;
+  start: string | null;
+}): string {
+  const subject = event.subject ?? '(no subject)';
+  return event.start ? `${subject} - ${event.start}` : subject;
 }
 
 export function normalizeString(value: string | null | undefined): string {

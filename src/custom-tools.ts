@@ -15,6 +15,7 @@ import { sharepointToolDefinitions } from './custom-tools/sharepoint.js';
 import { calendarToolDefinitions } from './custom-tools/calendar.js';
 import { taskToolDefinitions } from './custom-tools/tasks.js';
 import { mailToolDefinitions } from './custom-tools/mail.js';
+import { searchToolDefinitions } from './custom-tools/search.js';
 
 const customToolDefinitions: CustomToolDefinition[] = [
   ...peopleToolDefinitions,
@@ -24,6 +25,7 @@ const customToolDefinitions: CustomToolDefinition[] = [
   ...calendarToolDefinitions,
   ...taskToolDefinitions,
   ...mailToolDefinitions,
+  ...searchToolDefinitions,
 ];
 
 export function getCustomToolDefinitions(): readonly CustomToolDefinition[] {

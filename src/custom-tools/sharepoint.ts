@@ -150,7 +150,7 @@ async function searchDriveItems(
     .slice(0, limit);
 }
 
-async function searchSharePointContentInternal(
+export async function searchSharePointContentInternal(
   context: CustomToolHandlerContext,
   query: string,
   limit: number,
