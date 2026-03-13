@@ -2,10 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { strToU8, zipSync } from 'fflate';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-vi.mock('pdf-parse', () => ({
-  default: vi.fn(async () => ({ text: 'PDF extracted text' })),
-}));
-
 import { registerGraphTools } from '../src/graph-tools.js';
 import GraphClient from '../src/graph-client.js';
 
@@ -45,6 +41,31 @@ function createJwtWithScopes(scopes: string[]): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({ scp: scopes.join(' ') })).toString('base64url');
   return `${header}.${payload}.signature`;
+}
+
+function createSimplePdf(text: string): Buffer {
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${text.length + 31} >>\nstream\nBT\n/F1 24 Tf\n72 72 Td\n(${text}) Tj\nET\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+  ];
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf, 'utf8'));
+    pdf += object;
+  }
+  const xrefOffset = Buffer.byteLength(pdf, 'utf8');
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+  for (let index = 1; index < offsets.length; index += 1) {
+    pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, 'utf8');
 }
 
 describe('agent-worthy tool surfaces', () => {
@@ -175,7 +196,7 @@ describe('agent-worthy tool surfaces', () => {
         };
       }
       if (endpoint === '/drives/drive-1/items/pdf-1/content') {
-        return Buffer.from('%PDF-1.4');
+        return createSimplePdf('PDF extracted text');
       }
       if (endpoint === '/drives/drive-1/items/md-1/content') {
         return Buffer.from('hello world');
@@ -213,7 +234,7 @@ describe('agent-worthy tool surfaces', () => {
       })
     ) as { file: { label: string } };
 
-    expect(pdfResult.text).toBe('PDF extracted text');
+    expect(pdfResult.text).toContain('PDF extracted text');
     expect(previewResult.previewOnly).toBe(true);
     expect(previewResult.previewText).toContain('hello codex');
     expect(executeResult.file.label).toContain('readme.md');

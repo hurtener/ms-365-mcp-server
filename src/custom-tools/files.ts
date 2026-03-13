@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import pdf from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import { z } from 'zod';
 import {
   CustomToolDefinition,
@@ -472,8 +472,13 @@ export async function getFileTextInternal(
   if (isTextLikeFile(item)) {
     extractedText = buffer.toString('utf8');
   } else if (extension === 'pdf') {
-    const parsed = await pdf(buffer);
-    extractedText = parsed.text ?? '';
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const parsed = await parser.getText();
+      extractedText = parsed.text ?? '';
+    } finally {
+      await parser.destroy();
+    }
   } else if (extension === 'docx') {
     extractedText = extractDocxText(buffer);
   } else if (extension === 'pptx') {
