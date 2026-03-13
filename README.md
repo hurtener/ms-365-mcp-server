@@ -1201,16 +1201,16 @@ If you're having problems or need help:
 
 - Create an [issue](https://github.com/hurtener/ms-365-mcp-server/issues)
 - Start a [discussion](https://github.com/hurtener/ms-365-mcp-server/discussions)
-- Email: eirikb@eirikb.no
-- Discord: https://discord.gg/WvGVNScrAZ or @eirikb
+- For fork-specific behavior, prefer issues or discussions in this repository.
 
 ## Maintainers
 
 This fork builds on the original work by Softeria.
 
 - Original upstream: Softeria / Eirik Brevik
-- Fork maintainers: Santiago Benvenuto and OpenAI Codex
+- Fork maintainer: Hurtener
+- Implementation and maintenance support: Santiago Benvenuto and OpenAI Codex
 
 ## License
 
-MIT © 2026 Softeria
+MIT © 2026 Hurtener
