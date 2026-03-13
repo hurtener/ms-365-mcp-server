@@ -301,7 +301,10 @@ export const sharepointToolDefinitions: CustomToolDefinition[] = [
     handler: async (params, context) => {
       const limit = getOptionalNumber(params, 'limit', 25);
       const cursor = getOptionalString(params, 'cursor');
-      return success(context.graphClient, await listSitesInternal(context, undefined, limit, cursor));
+      return success(
+        context.graphClient,
+        await listSitesInternal(context, undefined, limit, cursor)
+      );
     },
   },
   {
@@ -343,7 +346,10 @@ export const sharepointToolDefinitions: CustomToolDefinition[] = [
       const siteId = getRequiredString(params, 'siteId');
       const limit = getOptionalNumber(params, 'limit', 50);
       const cursor = getOptionalString(params, 'cursor');
-      return success(context.graphClient, await listSiteDrivesInternal(context, siteId, limit, cursor));
+      return success(
+        context.graphClient,
+        await listSiteDrivesInternal(context, siteId, limit, cursor)
+      );
     },
   },
   {
@@ -364,7 +370,10 @@ export const sharepointToolDefinitions: CustomToolDefinition[] = [
       const siteId = getRequiredString(params, 'siteId');
       const limit = getOptionalNumber(params, 'limit', 50);
       const cursor = getOptionalString(params, 'cursor');
-      return success(context.graphClient, await listSiteDrivesInternal(context, siteId, limit, cursor));
+      return success(
+        context.graphClient,
+        await listSiteDrivesInternal(context, siteId, limit, cursor)
+      );
     },
   },
   {

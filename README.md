@@ -161,6 +161,7 @@ This fork includes a custom normalization and resolution layer aimed at Canvas a
 do not change the raw Graph tool payloads; they add normalized, ranked, path-first responses on top.
 
 **People**
+
 - `search-users`
 - `resolve-person`
 - `get-user`
@@ -170,6 +171,7 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `search-people-across-surfaces`
 
 **Teams**
+
 - `list-chat-members`
 - `get-chat-details`
 - `find-chats-by-participant`
@@ -179,6 +181,7 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `list-channel-members`
 
 **Files**
+
 - `resolve-drive-path`
 - `list-folder`
 - `search-files`
@@ -189,6 +192,7 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `delete-file`
 
 **SharePoint**
+
 - `list-sites`
 - `search-sites`
 - `list-site-drives`
@@ -201,6 +205,7 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `search-sharepoint-pages`
 
 **Calendar**
+
 - `search-calendar-events`
 - `resolve-attendees`
 - `find-availability`
@@ -210,6 +215,7 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `list-calendars-details`
 
 **Tasks**
+
 - `search-tasks`
 - `list-task-lists`
 - `list-tasks`
@@ -218,6 +224,7 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `reopen-task`
 
 **Mail**
+
 - `search-mail`
 - `resolve-mail-recipients`
 - `list-attachments`
@@ -230,23 +237,23 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 
 These custom tools request scopes independently from `endpoints.json` so they work with filtered tool sets:
 
-| Tool family | Scopes |
-| --- | --- |
-| People resolution (`search-users`, `resolve-person`, `get-user`, `get-manager`, `get-direct-reports`) | `User.Read.All` |
-| Presence (`list-user-presence`) | `Presence.Read.All` |
-| Teams chat resolution (`list-chat-members`, `get-chat-details`, `list-recent-chats`) | `Chat.Read` |
-| Teams participant/message search (`find-chats-by-participant`, `get-chat-context`, `search-messages`) | `Chat.Read`, `User.Read.All`, `ChatMessage.Read`, `ChannelMessage.Read.All` as needed |
-| Teams channel members (`list-channel-members`) | `ChannelMember.Read.All` |
-| Files (`resolve-drive-path`, `list-folder`, `search-files`, `get-file-*`) | `Files.Read`, `Sites.Read.All` |
-| File writes (`create-text-file`, `update-text-file`, `delete-file`) | `Files.ReadWrite`, `Sites.ReadWrite.All` |
-| SharePoint (`list-sites`, `search-sites`, `list-site-drives`, `search-site-files`, `search-sharepoint-*`) | `Sites.Read.All` |
-| Calendar (`search-calendar-events`, `get-calendar-event-details`, `list-calendars-details`) | `Calendars.Read` |
-| Meeting resolution (`resolve-attendees`, `find-availability`, `suggest-meeting-times`) | `Calendars.Read`, `User.Read.All` |
-| Calendar writes (`create-calendar-event-with-attendees`) | `Calendars.ReadWrite`, `User.Read.All` |
-| Tasks (`search-tasks`, `list-task-lists`, `list-tasks`, `get-task-context`) | `Tasks.Read` |
-| Task updates (`complete-task`, `reopen-task`) | `Tasks.ReadWrite` |
-| Mail (`search-mail`, `list-attachments`, `get-attachment-content`, `thread-mail`, `find-related-mail`) | `Mail.Read` |
-| Mail recipient/person resolution (`resolve-mail-recipients`, `search-mail-by-person`) | `Mail.Read`, `User.Read.All` |
+| Tool family                                                                                               | Scopes                                                                                |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| People resolution (`search-users`, `resolve-person`, `get-user`, `get-manager`, `get-direct-reports`)     | `User.Read.All`                                                                       |
+| Presence (`list-user-presence`)                                                                           | `Presence.Read.All`                                                                   |
+| Teams chat resolution (`list-chat-members`, `get-chat-details`, `list-recent-chats`)                      | `Chat.Read`                                                                           |
+| Teams participant/message search (`find-chats-by-participant`, `get-chat-context`, `search-messages`)     | `Chat.Read`, `User.Read.All`, `ChatMessage.Read`, `ChannelMessage.Read.All` as needed |
+| Teams channel members (`list-channel-members`)                                                            | `ChannelMember.Read.All`                                                              |
+| Files (`resolve-drive-path`, `list-folder`, `search-files`, `get-file-*`)                                 | `Files.Read`, `Sites.Read.All`                                                        |
+| File writes (`create-text-file`, `update-text-file`, `delete-file`)                                       | `Files.ReadWrite`, `Sites.ReadWrite.All`                                              |
+| SharePoint (`list-sites`, `search-sites`, `list-site-drives`, `search-site-files`, `search-sharepoint-*`) | `Sites.Read.All`                                                                      |
+| Calendar (`search-calendar-events`, `get-calendar-event-details`, `list-calendars-details`)               | `Calendars.Read`                                                                      |
+| Meeting resolution (`resolve-attendees`, `find-availability`, `suggest-meeting-times`)                    | `Calendars.Read`, `User.Read.All`                                                     |
+| Calendar writes (`create-calendar-event-with-attendees`)                                                  | `Calendars.ReadWrite`, `User.Read.All`                                                |
+| Tasks (`search-tasks`, `list-task-lists`, `list-tasks`, `get-task-context`)                               | `Tasks.Read`                                                                          |
+| Task updates (`complete-task`, `reopen-task`)                                                             | `Tasks.ReadWrite`                                                                     |
+| Mail (`search-mail`, `list-attachments`, `get-attachment-content`, `thread-mail`, `find-related-mail`)    | `Mail.Read`                                                                           |
+| Mail recipient/person resolution (`resolve-mail-recipients`, `search-mail-by-person`)                     | `Mail.Read`, `User.Read.All`                                                          |
 
 ### Custom Tool Contracts
 

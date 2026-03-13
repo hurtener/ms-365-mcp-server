@@ -281,7 +281,12 @@ describe('custom Canvas-oriented tools', () => {
       if (endpoint === '/chats/group-chat/members') {
         return {
           value: [
-            { id: 'm1', userId: 'juan-id', displayName: 'Juan Casiraghi', email: 'juan@company.com' },
+            {
+              id: 'm1',
+              userId: 'juan-id',
+              displayName: 'Juan Casiraghi',
+              email: 'juan@company.com',
+            },
             { id: 'm2', userId: 'other-id', displayName: 'Other User', email: 'other@company.com' },
             { id: 'm3', userId: 'me-id', displayName: 'Me', email: 'me@company.com' },
           ],
@@ -291,7 +296,12 @@ describe('custom Canvas-oriented tools', () => {
       if (endpoint === '/chats/one-chat/members') {
         return {
           value: [
-            { id: 'm1', userId: 'juan-id', displayName: 'Juan Casiraghi', email: 'juan@company.com' },
+            {
+              id: 'm1',
+              userId: 'juan-id',
+              displayName: 'Juan Casiraghi',
+              email: 'juan@company.com',
+            },
             { id: 'm2', userId: 'me-id', displayName: 'Me', email: 'me@company.com' },
           ],
         };
@@ -362,7 +372,12 @@ describe('custom Canvas-oriented tools', () => {
       if (endpoint === '/chats/good-chat/members') {
         return {
           value: [
-            { id: 'm1', userId: 'juan-id', displayName: 'Juan Casiraghi', email: 'juan@company.com' },
+            {
+              id: 'm1',
+              userId: 'juan-id',
+              displayName: 'Juan Casiraghi',
+              email: 'juan@company.com',
+            },
             { id: 'm2', userId: 'me-id', displayName: 'Me', email: 'me@company.com' },
           ],
         };
@@ -371,7 +386,13 @@ describe('custom Canvas-oriented tools', () => {
       throw new Error(`Unexpected endpoint: ${endpoint}`);
     });
 
-    registerGraphTools(server, graphClient, false, 'find-chats-by-participant|list-recent-chats', true);
+    registerGraphTools(
+      server,
+      graphClient,
+      false,
+      'find-chats-by-participant|list-recent-chats',
+      true
+    );
 
     const recentResult = await handlers.get('list-recent-chats')!({
       limit: 10,
@@ -414,7 +435,12 @@ describe('custom Canvas-oriented tools', () => {
       if (endpoint === '/chats/chat-1/members') {
         return {
           value: [
-            { id: 'm1', userId: 'juan-id', displayName: 'Juan Casiraghi', email: 'juan@company.com' },
+            {
+              id: 'm1',
+              userId: 'juan-id',
+              displayName: 'Juan Casiraghi',
+              email: 'juan@company.com',
+            },
             { id: 'm2', userId: 'me-id', displayName: 'Me', email: 'me@company.com' },
           ],
         };
@@ -637,8 +663,7 @@ describe('custom Canvas-oriented tools', () => {
         size: 12345,
         webUrl: 'https://contoso.sharepoint.com/plan.docx',
         file: {
-          mimeType:
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         },
         parentReference: {
           driveId: 'drive-1',
@@ -808,7 +833,10 @@ describe('custom Canvas-oriented tools', () => {
         };
       }
 
-      if (endpoint === '/me/todo/lists/list-1/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body') {
+      if (
+        endpoint ===
+        '/me/todo/lists/list-1/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body'
+      ) {
         return {
           value: [
             {
@@ -866,15 +894,35 @@ describe('custom Canvas-oriented tools', () => {
         return { value: [{ id: 'task-2', status: 'notStarted' }] };
       }
 
-      if (endpoint === '/me/todo/lists/list-1/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body') {
+      if (
+        endpoint ===
+        '/me/todo/lists/list-1/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body'
+      ) {
         return {
-          value: [{ id: 'task-1', title: 'First', status: 'notStarted', dueDateTime: { dateTime: '2026-03-13T10:00:00Z' } }],
+          value: [
+            {
+              id: 'task-1',
+              title: 'First',
+              status: 'notStarted',
+              dueDateTime: { dateTime: '2026-03-13T10:00:00Z' },
+            },
+          ],
         };
       }
 
-      if (endpoint === '/me/todo/lists/list-2/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body') {
+      if (
+        endpoint ===
+        '/me/todo/lists/list-2/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body'
+      ) {
         return {
-          value: [{ id: 'task-2', title: 'Second', status: 'notStarted', dueDateTime: { dateTime: '2026-03-14T10:00:00Z' } }],
+          value: [
+            {
+              id: 'task-2',
+              title: 'Second',
+              status: 'notStarted',
+              dueDateTime: { dateTime: '2026-03-14T10:00:00Z' },
+            },
+          ],
         };
       }
 
@@ -991,14 +1039,16 @@ describe('custom Canvas-oriented tools', () => {
                       resource: {
                         id: 'doc-1',
                         title: 'Brand deck',
-                        webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/brand.pptx',
+                        webUrl:
+                          'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/brand.pptx',
                       },
                     },
                     {
                       resource: {
                         id: 'doc-2',
                         title: 'Wrong site',
-                        webUrl: 'https://contoso.sharepoint.com/sites/sales/Shared%20Documents/qbr.pptx',
+                        webUrl:
+                          'https://contoso.sharepoint.com/sites/sales/Shared%20Documents/qbr.pptx',
                       },
                     },
                   ],

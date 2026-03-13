@@ -161,7 +161,12 @@ async function listTasksInternal(
   }
 ): Promise<{ items: ReturnType<typeof normalizeTask>[]; nextCursor?: string }> {
   if (params.listId) {
-    const result = await loadTasksForList(context, params.listId, Math.max(params.limit * 3, 50), params.cursor);
+    const result = await loadTasksForList(
+      context,
+      params.listId,
+      Math.max(params.limit * 3, 50),
+      params.cursor
+    );
     return {
       items: result.items
         .filter((entry) =>

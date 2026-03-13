@@ -140,8 +140,7 @@ async function tryFetchChatMembers(
     return {
       members: [],
       membersUnavailable: true,
-      membersError:
-        error instanceof GraphToolError ? error.code : 'chat_members_unavailable',
+      membersError: error instanceof GraphToolError ? error.code : 'chat_members_unavailable',
     };
   }
 }
@@ -412,7 +411,12 @@ export const teamsToolDefinitions: CustomToolDefinition[] = [
       const includeGroupChats = getOptionalBoolean(params, 'includeGroupChats', true);
       const limit = getOptionalNumber(params, 'limit', 10);
       const participant = await resolveParticipantInput(context, params);
-      const recentChats = await listRecentChatsInternal(context, Math.max(limit * 5, 25), undefined, true);
+      const recentChats = await listRecentChatsInternal(
+        context,
+        Math.max(limit * 5, 25),
+        undefined,
+        true
+      );
       const items = recentChats.items
         .filter((entry) => includeGroupChats || entry.chatType === 'oneOnOne')
         .filter((entry) => !entry.membersUnavailable)
@@ -493,7 +497,11 @@ export const teamsToolDefinitions: CustomToolDefinition[] = [
     scopes: ['Chat.Read', 'ChannelMessage.Read.All'],
     schema: {
       query: z.string().min(1).describe('Free-text search query'),
-      participantUserId: z.string().min(1).optional().describe('Only return hits from matching chats'),
+      participantUserId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Only return hits from matching chats'),
       scope: z.literal('chats').default('chats').describe('Currently only chats are supported'),
       limit: z.number().int().min(1).max(25).default(20).describe('Maximum search hits to return'),
     },

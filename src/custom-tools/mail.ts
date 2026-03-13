@@ -141,7 +141,10 @@ export const mailToolDefinitions: CustomToolDefinition[] = [
       const folder = getOptionalString(params, 'folder');
       const limit = getOptionalNumber(params, 'limit', 25);
       const cursor = getOptionalString(params, 'cursor');
-      return success(context.graphClient, await searchMailInternal(context, query, limit, folder, cursor));
+      return success(
+        context.graphClient,
+        await searchMailInternal(context, query, limit, folder, cursor)
+      );
     },
   },
   {
@@ -186,7 +189,10 @@ export const mailToolDefinitions: CustomToolDefinition[] = [
       const messageId = getRequiredString(params, 'messageId');
       const limit = getOptionalNumber(params, 'limit', 100);
       const cursor = getOptionalString(params, 'cursor');
-      return success(context.graphClient, await listAttachmentsInternal(context, messageId, limit, cursor));
+      return success(
+        context.graphClient,
+        await listAttachmentsInternal(context, messageId, limit, cursor)
+      );
     },
   },
   {
@@ -297,7 +303,10 @@ export const mailToolDefinitions: CustomToolDefinition[] = [
       const person = await resolveQueryToBestUser(context, query);
       const email = person.email ?? person.userPrincipalName ?? query;
       const searchQuery = `from:${email} OR to:${email}`;
-      return success(context.graphClient, await searchMailInternal(context, searchQuery, limit, folder));
+      return success(
+        context.graphClient,
+        await searchMailInternal(context, searchQuery, limit, folder)
+      );
     },
   },
 ];

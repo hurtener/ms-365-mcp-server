@@ -486,8 +486,9 @@ export function normalizeMembers(entries: JsonRecord[]): NormalizedChatMember[] 
     const displayName = getString(entry, 'displayName') ?? getString(user, 'displayName') ?? null;
     const userId = getString(entry, 'userId') ?? getString(user, 'id');
     const memberId = getString(entry, 'id') ?? `${userId ?? displayName ?? email ?? 'member'}`;
-    const membershipType =
-      roles.includes('owner') ? 'owner' : roles[0] ?? getString(entry, '@odata.type') ?? 'member';
+    const membershipType = roles.includes('owner')
+      ? 'owner'
+      : (roles[0] ?? getString(entry, '@odata.type') ?? 'member');
     const membershipOrigins = getMembershipOrigins(entry);
 
     if (!userId && !displayName && !email && !userPrincipalName) {
@@ -756,7 +757,10 @@ export function compareRankedUsers(left: RankedUser, right: RankedUser): number 
   return buildUserLabel(left).localeCompare(buildUserLabel(right));
 }
 
-export function compareDates(left: string | null | undefined, right: string | null | undefined): number {
+export function compareDates(
+  left: string | null | undefined,
+  right: string | null | undefined
+): number {
   const leftMs = left ? Date.parse(left) : 0;
   const rightMs = right ? Date.parse(right) : 0;
   return leftMs - rightMs;
@@ -784,7 +788,10 @@ export function buildUserSearchExpression(query: string): string {
 }
 
 export function stripHtml(value: string): string {
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function getMembershipOrigins(entry: JsonRecord): string[] {
@@ -823,7 +830,10 @@ export function getRequiredString(params: Record<string, unknown>, key: string):
   return value;
 }
 
-export function getOptionalString(params: Record<string, unknown>, key: string): string | undefined {
+export function getOptionalString(
+  params: Record<string, unknown>,
+  key: string
+): string | undefined {
   const value = params[key];
   return typeof value === 'string' ? value : undefined;
 }

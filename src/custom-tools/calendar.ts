@@ -157,7 +157,9 @@ function scoreMeetingTime(entry: JsonRecord): number {
   if (locations.length === 0) {
     return 0.5;
   }
-  const freeCount = locations.filter((item) => getString(asRecord(item), 'availability') === 'free').length;
+  const freeCount = locations.filter(
+    (item) => getString(asRecord(item), 'availability') === 'free'
+  ).length;
   return Number((freeCount / locations.length).toFixed(2));
 }
 
@@ -201,7 +203,10 @@ async function findAvailabilityInternal(
   if (returnSuggestions) {
     return {
       items: suggestions.map((entry) => ({
-        start: getString(asRecord(entry.meetingTimeSlot?.start as JsonRecord | undefined), 'dateTime'),
+        start: getString(
+          asRecord(entry.meetingTimeSlot?.start as JsonRecord | undefined),
+          'dateTime'
+        ),
         end: getString(asRecord(entry.meetingTimeSlot?.end as JsonRecord | undefined), 'dateTime'),
         score: scoreMeetingTime(entry),
         attendeeAvailability: getArray(entry, 'attendeeAvailability'),
@@ -212,8 +217,12 @@ async function findAvailabilityInternal(
 
   return {
     slots: suggestions.map((entry) => ({
-      start: getString(asRecord(entry.meetingTimeSlot?.start as JsonRecord | undefined), 'dateTime') ?? start,
-      end: getString(asRecord(entry.meetingTimeSlot?.end as JsonRecord | undefined), 'dateTime') ?? end,
+      start:
+        getString(asRecord(entry.meetingTimeSlot?.start as JsonRecord | undefined), 'dateTime') ??
+        start,
+      end:
+        getString(asRecord(entry.meetingTimeSlot?.end as JsonRecord | undefined), 'dateTime') ??
+        end,
       score: scoreMeetingTime(entry),
     })),
   };
@@ -244,7 +253,14 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       const limit = getOptionalNumber(params, 'limit', 25);
       const cursor = getOptionalString(params, 'cursor');
       const calendarId = getOptionalString(params, 'calendarId');
-      const result = await listCalendarEventsInternal(context, start, end, Math.max(limit * 3, 25), calendarId, cursor);
+      const result = await listCalendarEventsInternal(
+        context,
+        start,
+        end,
+        Math.max(limit * 3, 25),
+        calendarId,
+        cursor
+      );
       return success(context.graphClient, {
         items: result.items.filter((event) => eventMatchesQuery(event, query)).slice(0, limit),
         nextCursor: result.nextCursor,
@@ -302,7 +318,8 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
   },
   {
     name: 'get-calendar-event-details',
-    description: 'Get a normalized calendar event shape with organizer, attendees, location, and body preview.',
+    description:
+      'Get a normalized calendar event shape with organizer, attendees, location, and body preview.',
     method: 'GET',
     path: '/me/events/{eventId}',
     requiresOrgMode: false,
@@ -316,7 +333,10 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
     handler: async (params, context) => {
       const eventId = getRequiredString(params, 'eventId');
       const calendarId = getOptionalString(params, 'calendarId');
-      return success(context.graphClient, await getCalendarEventInternal(context, eventId, calendarId));
+      return success(
+        context.graphClient,
+        await getCalendarEventInternal(context, eventId, calendarId)
+      );
     },
   },
   {
@@ -360,7 +380,12 @@ export const calendarToolDefinitions: CustomToolDefinition[] = [
       start: z.string().min(1).describe('Start date-time in ISO 8601'),
       end: z.string().min(1).describe('End date-time in ISO 8601'),
       attendees: z
-        .array(z.union([z.string(), z.object({ email: z.string().email(), displayName: z.string().optional() })]))
+        .array(
+          z.union([
+            z.string(),
+            z.object({ email: z.string().email(), displayName: z.string().optional() }),
+          ])
+        )
         .optional()
         .describe('Optional attendee identities'),
       body: z.string().optional().describe('Optional body content'),

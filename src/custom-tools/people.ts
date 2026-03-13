@@ -75,7 +75,11 @@ export const peopleToolDefinitions: CustomToolDefinition[] = [
       }
 
       const [best, second] = items;
-      if (!best || best.matchScore < 0.85 || (second && best.matchScore - second.matchScore < 0.1)) {
+      if (
+        !best ||
+        best.matchScore < 0.85 ||
+        (second && best.matchScore - second.matchScore < 0.1)
+      ) {
         return ambiguousMatchResult(
           context.graphClient,
           items.slice(0, 5).map((item, index) => ({

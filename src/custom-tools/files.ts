@@ -185,7 +185,10 @@ export const fileToolDefinitions: CustomToolDefinition[] = [
       const path = getRequiredString(params, 'path');
       const siteId = getOptionalString(params, 'siteId');
       const driveId = getOptionalString(params, 'driveId');
-      return success(context.graphClient, await resolveDriveItemByPath(context, path, siteId, driveId));
+      return success(
+        context.graphClient,
+        await resolveDriveItemByPath(context, path, siteId, driveId)
+      );
     },
   },
   {
@@ -261,7 +264,10 @@ export const fileToolDefinitions: CustomToolDefinition[] = [
       const path = getRequiredString(params, 'path');
       const siteId = getOptionalString(params, 'siteId');
       const driveId = getOptionalString(params, 'driveId');
-      return success(context.graphClient, await resolveDriveItemByPath(context, path, siteId, driveId));
+      return success(
+        context.graphClient,
+        await resolveDriveItemByPath(context, path, siteId, driveId)
+      );
     },
   },
   {

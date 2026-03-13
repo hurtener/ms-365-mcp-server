@@ -638,12 +638,7 @@ function buildToolsRegistry(
     toolsMap.set(tool.alias, { kind: 'generated', tool, config: endpointConfig });
   }
 
-  const customTools = buildCustomToolRegistry(
-    graphClient,
-    authManager,
-    multiAccount,
-    accountNames
-  );
+  const customTools = buildCustomToolRegistry(graphClient, authManager, multiAccount, accountNames);
   for (const [name, tool] of customTools) {
     if (tool.requiresOrgMode && !orgMode) {
       continue;
