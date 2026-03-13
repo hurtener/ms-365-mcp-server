@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   CHAT_TYPES,
   ChatCandidate,
+  buildBodyPreview,
   CustomToolDefinition,
   CustomToolHandlerContext,
   GraphCollectionResponse,
@@ -12,7 +13,6 @@ import {
   NormalizedUser,
   asRecord,
   calculateRecencyBonus,
-  chatSelect,
   compareDates,
   decodeCursor,
   encodeCursor,
@@ -32,6 +32,16 @@ import {
   searchUsersInternal,
   success,
 } from './shared.js';
+
+type NormalizedMessageHit = {
+  chatId: string | null;
+  messageId: string | null;
+  chatType: string | null;
+  topic: string | null;
+  from: { userId: string | null; displayName: string | null };
+  createdDateTime: string | null;
+  bodyPreview: string | null;
+};
 
 function compareChatCandidates(left: ChatCandidate, right: ChatCandidate): number {
   const scoreDelta = right.score - left.score;
@@ -150,10 +160,7 @@ async function getChatDetailsInternal(
   chatId: string,
   includeMembers: boolean
 ): Promise<{ chat: NormalizedChat; members: NormalizedChatMember[] }> {
-  const rawChat = await graphRequest<JsonRecord>(
-    context,
-    `/chats/${encodePathSegment(chatId)}?${chatSelect}`
-  );
+  const rawChat = await graphRequest<JsonRecord>(context, `/chats/${encodePathSegment(chatId)}`);
   const chat = normalizeChat(rawChat);
   if (!CHAT_TYPES.has(chat.chatType)) {
     throw new GraphToolError('unsupported_operation', `Unsupported chat type: ${chat.chatType}`);
@@ -183,9 +190,7 @@ async function listRecentChatsInternal(
   >;
   nextCursor?: string;
 }> {
-  const endpoint = cursor
-    ? decodeCursor(cursor)
-    : `/me/chats?${chatSelect}&$top=${limit}&$orderby=${encodeURIComponent('lastUpdatedDateTime desc')}`;
+  const endpoint = cursor ? decodeCursor(cursor) : `/me/chats?$top=${limit}`;
   const response = await graphRequest<GraphCollectionResponse<JsonRecord>>(context, endpoint);
   const chats = [...(response.value ?? [])].sort((left, right) =>
     compareDates(
@@ -270,19 +275,65 @@ async function fetchChatMessages(
 > {
   const response = await graphRequest<GraphCollectionResponse<JsonRecord>>(
     context,
-    `/chats/${encodePathSegment(chatId)}/messages?$select=id,createdDateTime,from,body,summary&$top=${limit}`
+    `/chats/${encodePathSegment(chatId)}/messages?$top=${limit}`
   );
-  return (response.value ?? []).map((message) => ({
-    id: typeof message.id === 'string' ? message.id : '',
-    from: extractMessageSender(message),
-    createdDateTime: typeof message.createdDateTime === 'string' ? message.createdDateTime : null,
-    bodyPreview:
-      typeof asRecord(message.body)?.content === 'string'
-        ? (asRecord(message.body)?.content as string).replace(/<[^>]+>/g, ' ').trim()
-        : typeof message.summary === 'string'
-          ? message.summary
-          : null,
-  }));
+  return [...(response.value ?? [])]
+    .sort((left, right) =>
+      compareDates(
+        typeof right.createdDateTime === 'string' ? right.createdDateTime : null,
+        typeof left.createdDateTime === 'string' ? left.createdDateTime : null
+      )
+    )
+    .slice(0, limit)
+    .map((message) => ({
+      id: typeof message.id === 'string' ? message.id : '',
+      from: extractMessageSender(message),
+      createdDateTime: typeof message.createdDateTime === 'string' ? message.createdDateTime : null,
+      bodyPreview: buildBodyPreview(message),
+    }));
+}
+
+async function enrichMessageHitsWithChatMetadata(
+  context: CustomToolHandlerContext,
+  items: NormalizedMessageHit[]
+): Promise<NormalizedMessageHit[]> {
+  const chatCache = new Map<string, Pick<NormalizedChat, 'chatType' | 'topic'>>();
+
+  for (const item of items) {
+    if ((!item.chatType || !item.topic) && item.chatId && !chatCache.has(item.chatId)) {
+      try {
+        const rawChat = await graphRequest<JsonRecord>(
+          context,
+          `/chats/${encodePathSegment(item.chatId)}`
+        );
+        const normalizedChat = normalizeChat(rawChat);
+        chatCache.set(item.chatId, {
+          chatType: normalizedChat.chatType,
+          topic: normalizedChat.topic,
+        });
+      } catch {
+        chatCache.set(item.chatId, {
+          chatType: item.chatType ?? null,
+          topic: item.topic ?? null,
+        });
+      }
+    }
+  }
+
+  return items.map((item) => {
+    if (!item.chatId) {
+      return item;
+    }
+    const chat = chatCache.get(item.chatId);
+    if (!chat) {
+      return item;
+    }
+    return {
+      ...item,
+      chatType: item.chatType ?? chat.chatType ?? null,
+      topic: item.topic ?? chat.topic ?? null,
+    };
+  });
 }
 
 export async function searchMessagesInternal(
@@ -305,25 +356,26 @@ export async function searchMessagesInternal(
     }),
   });
 
-  let items = getArray(response, 'value')
+  let items: NormalizedMessageHit[] = getArray(response, 'value')
     .flatMap((entry) => getArray(asRecord(entry), 'hitsContainers'))
     .flatMap((container) => getArray(asRecord(container), 'hits'))
     .map(asRecord)
     .filter((hit): hit is JsonRecord => !!hit)
-    .map((hit) => asRecord(hit.resource) ?? {})
-    .map((resource) => ({
-      chatId: typeof resource.chatId === 'string' ? resource.chatId : null,
-      messageId: typeof resource.id === 'string' ? resource.id : null,
-      chatType: typeof resource.chatType === 'string' ? resource.chatType : null,
-      topic: typeof resource.topic === 'string' ? resource.topic : null,
-      from: extractMessageSender(resource),
-      createdDateTime:
-        typeof resource.createdDateTime === 'string' ? resource.createdDateTime : null,
-      bodyPreview:
-        typeof asRecord(resource.body)?.content === 'string'
-          ? (asRecord(resource.body)?.content as string).replace(/<[^>]+>/g, ' ').trim()
-          : null,
-    }));
+    .map((hit) => {
+      const resource = asRecord(hit.resource) ?? {};
+      return {
+        chatId: typeof resource.chatId === 'string' ? resource.chatId : null,
+        messageId: typeof resource.id === 'string' ? resource.id : null,
+        chatType: typeof resource.chatType === 'string' ? resource.chatType : null,
+        topic: typeof resource.topic === 'string' ? resource.topic : null,
+        from: extractMessageSender(resource),
+        createdDateTime:
+          typeof resource.createdDateTime === 'string' ? resource.createdDateTime : null,
+        bodyPreview: buildBodyPreview(resource) ?? getOptionalString(hit, 'summary') ?? null,
+      };
+    });
+
+  items = await enrichMessageHitsWithChatMetadata(context, items);
 
   if (participantUserId) {
     const rosterCache = new Map<string, NormalizedChatMember[]>();

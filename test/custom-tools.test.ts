@@ -291,7 +291,7 @@ describe('custom Canvas-oriented tools', () => {
         };
       }
 
-      if (endpoint.startsWith('/me/chats?')) {
+      if (endpoint === '/me/chats?$top=50') {
         return {
           value: [
             {
@@ -378,7 +378,7 @@ describe('custom Canvas-oriented tools', () => {
         };
       }
 
-      if (endpoint.startsWith('/me/chats?')) {
+      if (endpoint === '/me/chats?$top=50' || endpoint === '/me/chats?$top=10') {
         return {
           value: [
             {
@@ -454,7 +454,7 @@ describe('custom Canvas-oriented tools', () => {
     const server = new McpServer({ name: 'test', version: '1.0.0' });
     const handlers = captureHandlers(server);
     const graphClient = createMockGraphClient(async (endpoint) => {
-      if (endpoint.startsWith('/chats/chat-1?')) {
+      if (endpoint === '/chats/chat-1') {
         return {
           id: 'chat-1',
           chatType: 'oneOnOne',
@@ -478,7 +478,7 @@ describe('custom Canvas-oriented tools', () => {
         };
       }
 
-      if (endpoint.startsWith('/chats/chat-1/messages?')) {
+      if (endpoint === '/chats/chat-1/messages?$top=5') {
         return {
           value: [
             {
@@ -588,6 +588,78 @@ describe('custom Canvas-oriented tools', () => {
 
     expect(parsed.items).toHaveLength(1);
     expect(parsed.items[0]).toMatchObject({ chatId: 'chat-1', messageId: 'msg-1' });
+  });
+
+  it('search-messages hydrates sparse Graph search hits with chat metadata and hit summaries', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      if (endpoint === '/search/query') {
+        expect(options?.method).toBe('POST');
+        return {
+          value: [
+            {
+              hitsContainers: [
+                {
+                  hits: [
+                    {
+                      summary: 'Mauro Beneitez mentioned in thread',
+                      resource: {
+                        id: 'msg-1',
+                        chatId: 'chat-1',
+                        createdDateTime: '2026-03-12T10:59:00Z',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      if (endpoint === '/chats/chat-1') {
+        return {
+          id: 'chat-1',
+          chatType: 'oneOnOne',
+          topic: null,
+          lastUpdatedDateTime: '2026-03-12T11:00:00Z',
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-messages', true);
+
+    const result = await handlers.get('search-messages')!({
+      query: 'Mauro Beneitez',
+      scope: 'chats',
+      limit: 10,
+    });
+    const parsed = parseResult(result) as {
+      items: Array<{
+        chatId: string;
+        chatType: string | null;
+        topic: string | null;
+        bodyPreview: string | null;
+      }>;
+    };
+
+    expect(parsed.items).toEqual([
+      {
+        chatId: 'chat-1',
+        messageId: 'msg-1',
+        chatType: 'oneOnOne',
+        topic: null,
+        from: {
+          userId: null,
+          displayName: null,
+        },
+        createdDateTime: '2026-03-12T10:59:00Z',
+        bodyPreview: 'Mauro Beneitez mentioned in thread',
+      },
+    ]);
   });
 
   it('resolve-person returns structured ambiguity when matches are too close', async () => {
