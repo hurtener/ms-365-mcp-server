@@ -120,7 +120,12 @@ class MicrosoftGraphServer {
     }
 
     const outputFormat = this.options.toon ? 'toon' : 'json';
-    this.graphClient = new GraphClient(this.authManager, this.secrets, outputFormat);
+    this.graphClient = new GraphClient(
+      this.authManager,
+      this.secrets,
+      outputFormat,
+      !!this.options.http
+    );
 
     if (!this.options.http) {
       this.server = this.createMcpServer();
@@ -177,7 +182,7 @@ class MicrosoftGraphServer {
         next();
       });
 
-      const oauthProvider = new MicrosoftOAuthProvider(this.authManager, this.secrets!);
+      const oauthProvider = new MicrosoftOAuthProvider(this.secrets!);
 
       // OAuth Authorization Server Discovery
       app.get('/.well-known/oauth-authorization-server', async (req, res) => {

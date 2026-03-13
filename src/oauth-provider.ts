@@ -1,14 +1,11 @@
 import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import logger from './logger.js';
-import AuthManager from './auth.js';
 import type { AppSecrets } from './secrets.js';
 import { getCloudEndpoints } from './cloud-config.js';
 
 export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
-  private authManager: AuthManager;
-
-  constructor(authManager: AuthManager, secrets: AppSecrets) {
+  constructor(secrets: AppSecrets) {
     const tenantId = secrets.tenantId || 'common';
     const clientId = secrets.clientId;
     const cloudEndpoints = getCloudEndpoints(secrets.cloudType);
@@ -31,8 +28,6 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
             const userData = await response.json();
             logger.info(`OAuth token verified for user: ${userData.userPrincipalName}`);
 
-            await authManager.setOAuthToken(token);
-
             return {
               token,
               clientId,
@@ -53,7 +48,5 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
         };
       },
     });
-
-    this.authManager = authManager;
   }
 }

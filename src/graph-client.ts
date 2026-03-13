@@ -38,21 +38,30 @@ class GraphClient {
   private authManager: AuthManager;
   private secrets: AppSecrets;
   private readonly outputFormat: 'json' | 'toon' = 'json';
+  private readonly requireRequestScopedAuth: boolean;
 
   constructor(
     authManager: AuthManager,
     secrets: AppSecrets,
-    outputFormat: 'json' | 'toon' = 'json'
+    outputFormat: 'json' | 'toon' = 'json',
+    requireRequestScopedAuth: boolean = false
   ) {
     this.authManager = authManager;
     this.secrets = secrets;
     this.outputFormat = outputFormat;
+    this.requireRequestScopedAuth = requireRequestScopedAuth;
   }
 
   async makeRequest(endpoint: string, options: GraphRequestOptions = {}): Promise<unknown> {
     const contextTokens = getRequestTokens();
-    let accessToken =
-      options.accessToken ?? contextTokens?.accessToken ?? (await this.authManager.getToken());
+    const requestScopedAccessToken = options.accessToken ?? contextTokens?.accessToken;
+    if (this.requireRequestScopedAuth && !requestScopedAccessToken) {
+      throw new Error(
+        'Missing request-scoped access token for HTTP mode. Send Authorization: Bearer <token> with the MCP request.'
+      );
+    }
+
+    let accessToken = requestScopedAccessToken ?? (await this.authManager.getToken());
     const refreshToken = options.refreshToken ?? contextTokens?.refreshToken;
 
     if (!accessToken) {

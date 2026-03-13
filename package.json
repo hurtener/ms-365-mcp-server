@@ -1,11 +1,12 @@
 {
   "name": "@hurtener/ms-365-mcp-server",
-  "version": "0.46.0",
+  "version": "1.0.2",
   "description": " A Model Context Protocol (MCP) server for interacting with Microsoft 365 and Office services through the Graph API",
   "type": "module",
   "main": "dist/index.js",
   "files": [
     "dist",
+    "docs",
     "README.md",
     "LICENSE"
   ],

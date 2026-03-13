@@ -789,6 +789,25 @@ Then add connection with URL `http://localhost:3000/mcp` and ID `ms-365`.
 
 ![Open WebUI MCP Connection](https://github.com/user-attachments/assets/dcab71dd-cf02-4bcb-b7db-5725d6be4064)
 
+### Stateless HTTP Sidecars
+
+Pooled HTTP sidecars should use the HTTP transport in stateless bearer-header mode.
+
+- Run the server with `--http`
+- Send MCP traffic to `/mcp`
+- Include `Authorization: Bearer <Graph access token>` on every request
+- Optionally include `x-microsoft-refresh-token: <refresh_token>`
+- Do not rely on `MS365_MCP_OAUTH_TOKEN` for sidecar execution
+- Sidecar pools may safely reuse the same process across users because auth is request-scoped
+
+Example:
+
+```bash
+npx @hurtener/ms-365-mcp-server --http 3000 --org-mode
+```
+
+Contract details live in [docs/stateless-http-sidecar.md](./docs/stateless-http-sidecar.md).
+
 ### Local Development
 
 For local development or testing:
@@ -835,7 +854,24 @@ For interactive authentication via device code:
 
 Tokens are cached securely in your OS credential store (fallback to file).
 
-#### 2. OAuth Authorization Code Flow (HTTP mode only)
+#### 2. HTTP Bearer Auth and OAuth Discovery
+
+When running with `--http`, the server is designed for stateless per-request authentication.
+
+**Stateless sidecar path (recommended):**
+
+- Send requests directly to `/mcp`
+- Include `Authorization: Bearer <token>` on every request
+- Optionally include `x-microsoft-refresh-token`
+- No session stickiness is required
+- No `MS365_MCP_OAUTH_TOKEN` is required for sidecar operation
+
+**Generic MCP HTTP client path:**
+
+- The server still advertises OAuth capabilities for clients like Open WebUI
+- OAuth discovery, token, authorization, and dynamic registration remain available
+
+#### 2a. OAuth Authorization Code Flow (HTTP mode only)
 
 When running with `--http`, the server **requires** OAuth authentication:
 
@@ -848,7 +884,7 @@ This mode:
 - Advertises OAuth capabilities to MCP clients
 - Provides OAuth endpoints at `/auth/*` (authorize, token, metadata)
 - **Requires** `Authorization: Bearer <token>` for all MCP requests
-- Validates tokens with Microsoft Graph API
+- Validates tokens with Microsoft Graph API without promoting request tokens into shared process auth state
 - **Disables** login/logout tools by default (use `--enable-auth-tools` to enable them)
 
 MCP clients will automatically handle the OAuth flow when they see the advertised capabilities.
@@ -900,7 +936,7 @@ With these configured, the server will use your custom Azure app instead of the 
 #### 3. Bring Your Own Token (BYOT)
 
 If you are running ms-365-mcp-server as part of a larger system that manages Microsoft OAuth tokens externally, you can
-provide an access token directly to this MCP server:
+provide an access token directly to this MCP server for stdio or process-scoped usage:
 
 ```bash
 MS365_MCP_OAUTH_TOKEN=your_oauth_token npx @hurtener/ms-365-mcp-server
@@ -909,8 +945,9 @@ MS365_MCP_OAUTH_TOKEN=your_oauth_token npx @hurtener/ms-365-mcp-server
 This method:
 
 - Bypasses the interactive authentication flows
-- Use your pre-existing OAuth token for Microsoft Graph API requests
+- Uses your pre-existing OAuth token for Microsoft Graph API requests
 - Does not handle token refresh (token lifecycle management is your responsibility)
+- Is not the preferred transport model for stateless HTTP sidecars
 
 > **Note**: HTTP mode requires authentication. For unauthenticated testing, use stdio mode with device code flow.
 >
@@ -1012,7 +1049,7 @@ Environment variables:
 - `SILENT=true|1`: Disable console output
 - `MS365_MCP_CLIENT_ID`: Custom Azure app client ID (defaults to built-in app)
 - `MS365_MCP_TENANT_ID`: Custom tenant ID (defaults to 'common' for multi-tenant)
-- `MS365_MCP_OAUTH_TOKEN`: Pre-existing OAuth token for Microsoft Graph API (BYOT method)
+- `MS365_MCP_OAUTH_TOKEN`: Pre-existing OAuth token for Microsoft Graph API in stdio/process-scoped BYOT mode
 - `MS365_MCP_KEYVAULT_URL`: Azure Key Vault URL for secrets management (see Azure Key Vault section)
 - `MS365_MCP_TOKEN_CACHE_PATH`: Custom file path for MSAL token cache (see Token Storage below)
 - `MS365_MCP_SELECTED_ACCOUNT_PATH`: Custom file path for selected account metadata (see Token Storage below)
