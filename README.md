@@ -1,6 +1,6 @@
 # ms-365-mcp-server
 
-[![npm version](https://img.shields.io/npm/v/@softeria/ms-365-mcp-server.svg)](https://www.npmjs.com/package/@softeria/ms-365-mcp-server) [![build status](https://github.com/softeria/ms-365-mcp-server/actions/workflows/build.yml/badge.svg)](https://github.com/softeria/ms-365-mcp-server/actions/workflows/build.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/softeria/ms-365-mcp-server/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/@hurtener/ms-365-mcp-server.svg)](https://www.npmjs.com/package/@hurtener/ms-365-mcp-server) [![build status](https://github.com/hurtener/ms-365-mcp-server/actions/workflows/build.yml/badge.svg)](https://github.com/hurtener/ms-365-mcp-server/actions/workflows/build.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hurtener/ms-365-mcp-server/blob/main/LICENSE)
 
 Microsoft 365 MCP Server
 
@@ -70,7 +70,7 @@ value[1]{id,displayName,mail,jobTitle}:
 Via CLI flag:
 
 ```bash
-npx @softeria/ms-365-mcp-server --toon
+npx @hurtener/ms-365-mcp-server --toon
 ```
 
 Via Claude Desktop configuration:
@@ -80,7 +80,7 @@ Via Claude Desktop configuration:
   "mcpServers": {
     "ms365": {
       "command": "npx",
-      "args": ["-y", "@softeria/ms-365-mcp-server", "--toon"]
+      "args": ["-y", "@hurtener/ms-365-mcp-server", "--toon"]
     }
   }
 }
@@ -89,7 +89,7 @@ Via Claude Desktop configuration:
 Via environment variable:
 
 ```bash
-MS365_MCP_OUTPUT_FORMAT=toon npx @softeria/ms-365-mcp-server
+MS365_MCP_OUTPUT_FORMAT=toon npx @hurtener/ms-365-mcp-server
 ```
 
 ## Supported Services & Tools
@@ -639,7 +639,7 @@ To access work/school features (Teams, SharePoint, etc.), enable organization mo
   "mcpServers": {
     "ms365": {
       "command": "npx",
-      "args": ["-y", "@softeria/ms-365-mcp-server", "--org-mode"]
+      "args": ["-y", "@hurtener/ms-365-mcp-server", "--org-mode"]
     }
   }
 }
@@ -685,7 +685,7 @@ To add this MCP server to Claude Desktop, edit the config file under Settings > 
   "mcpServers": {
     "ms365": {
       "command": "npx",
-      "args": ["-y", "@softeria/ms-365-mcp-server"]
+      "args": ["-y", "@hurtener/ms-365-mcp-server"]
     }
   }
 }
@@ -698,7 +698,7 @@ To add this MCP server to Claude Desktop, edit the config file under Settings > 
   "mcpServers": {
     "ms365": {
       "command": "npx",
-      "args": ["-y", "@softeria/ms-365-mcp-server", "--org-mode"]
+      "args": ["-y", "@hurtener/ms-365-mcp-server", "--org-mode"]
     }
   }
 }
@@ -711,7 +711,7 @@ To add this MCP server to Claude Desktop, edit the config file under Settings > 
   "mcpServers": {
     "ms365-china": {
       "command": "npx",
-      "args": ["-y", "@softeria/ms-365-mcp-server", "--org-mode", "--cloud", "china"]
+      "args": ["-y", "@hurtener/ms-365-mcp-server", "--org-mode", "--cloud", "china"]
     }
   }
 }
@@ -722,27 +722,27 @@ To add this MCP server to Claude Desktop, edit the config file under Settings > 
 #### Personal Account (MSA)
 
 ```bash
-claude mcp add ms365 -- npx -y @softeria/ms-365-mcp-server
+claude mcp add ms365 -- npx -y @hurtener/ms-365-mcp-server
 ```
 
 #### Work/School Account (Global)
 
 ```bash
 # macOS/Linux
-claude mcp add ms365 -- npx -y @softeria/ms-365-mcp-server --org-mode
+claude mcp add ms365 -- npx -y @hurtener/ms-365-mcp-server --org-mode
 
 # Windows (use cmd /c wrapper)
-claude mcp add ms365 -s user -- cmd /c "npx -y @softeria/ms-365-mcp-server --org-mode"
+claude mcp add ms365 -s user -- cmd /c "npx -y @hurtener/ms-365-mcp-server --org-mode"
 ```
 
 #### Work/School Account (China 21Vianet)
 
 ```bash
 # macOS/Linux
-claude mcp add ms365-china -- npx -y @softeria/ms-365-mcp-server --org-mode --cloud china
+claude mcp add ms365-china -- npx -y @hurtener/ms-365-mcp-server --org-mode --cloud china
 
 # Windows (use cmd /c wrapper)
-claude mcp add ms365-china -s user -- cmd /c "npx -y @softeria/ms-365-mcp-server --org-mode --cloud china"
+claude mcp add ms365-china -s user -- cmd /c "npx -y @hurtener/ms-365-mcp-server --org-mode --cloud china"
 ```
 
 For other interfaces that support MCPs, please refer to their respective documentation for the correct
@@ -755,7 +755,7 @@ Open WebUI supports MCP servers via HTTP transport with OAuth 2.1.
 1. Start the server with HTTP mode and dynamic registration enabled:
 
    ```bash
-   npx @softeria/ms-365-mcp-server --http --enable-dynamic-registration
+   npx @hurtener/ms-365-mcp-server --http --enable-dynamic-registration
    ```
 
 2. In Open WebUI, go to **Admin Settings → Tools** (`/admin/settings/tools`) → **Add Connection**:
@@ -775,7 +775,7 @@ docker run -d -p 8080:8080 \
   -e OPENAI_API_KEY \
   ghcr.io/open-webui/open-webui:main
 
-npx @softeria/ms-365-mcp-server --http --enable-dynamic-registration
+npx @hurtener/ms-365-mcp-server --http --enable-dynamic-registration
 ```
 
 Then add connection with URL `http://localhost:3000/mcp` and ID `ms-365`.
@@ -822,7 +822,7 @@ For interactive authentication via device code:
   - Use `verify-login` tool to confirm
 - **CLI login**:
   ```bash
-  npx @softeria/ms-365-mcp-server --login
+  npx @hurtener/ms-365-mcp-server --login
   ```
   Follow the URL and code prompt in the terminal.
 
@@ -833,7 +833,7 @@ Tokens are cached securely in your OS credential store (fallback to file).
 When running with `--http`, the server **requires** OAuth authentication:
 
 ```bash
-npx @softeria/ms-365-mcp-server --http 3000
+npx @hurtener/ms-365-mcp-server --http 3000
 ```
 
 This mode:
@@ -896,7 +896,7 @@ If you are running ms-365-mcp-server as part of a larger system that manages Mic
 provide an access token directly to this MCP server:
 
 ```bash
-MS365_MCP_OAUTH_TOKEN=your_oauth_token npx @softeria/ms-365-mcp-server
+MS365_MCP_OAUTH_TOKEN=your_oauth_token npx @hurtener/ms-365-mcp-server
 ```
 
 This method:
@@ -918,18 +918,18 @@ Use a single server instance to serve multiple Microsoft accounts. When more tha
 
 ```bash
 # Login first account (device code flow)
-npx @softeria/ms-365-mcp-server --login
+npx @hurtener/ms-365-mcp-server --login
 # Follow the device code prompt, sign in as personal@outlook.com
 
 # Login second account
-npx @softeria/ms-365-mcp-server --login
+npx @hurtener/ms-365-mcp-server --login
 # Follow the device code prompt, sign in as work@company.com
 ```
 
 **List configured accounts:**
 
 ```bash
-npx @softeria/ms-365-mcp-server --list-accounts
+npx @hurtener/ms-365-mcp-server --list-accounts
 ```
 
 **Use in tool calls:** Pass `"account": "work@company.com"` in any tool request:
@@ -952,8 +952,8 @@ npx @softeria/ms-365-mcp-server --list-accounts
 To reduce initial connection overhead, use preset tool categories instead of loading all 90+ tools:
 
 ```bash
-npx @softeria/ms-365-mcp-server --preset mail
-npx @softeria/ms-365-mcp-server --list-presets  # See all available presets
+npx @hurtener/ms-365-mcp-server --preset mail
+npx @hurtener/ms-365-mcp-server --list-presets  # See all available presets
 ```
 
 Available presets: `mail`, `calendar`, `files`, `personal`, `work`, `excel`, `contacts`, `tasks`, `onenote`, `search`, `users`, `all`
@@ -1069,7 +1069,7 @@ For production deployments, you can store secrets in Azure Key Vault instead of 
 
 4. **Configure the server**:
    ```bash
-   MS365_MCP_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net npx @softeria/ms-365-mcp-server
+   MS365_MCP_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net npx @hurtener/ms-365-mcp-server
    ```
 
 ### Secret Name Mapping
@@ -1116,8 +1116,8 @@ npm run generate
 
 If you're having problems or need help:
 
-- Create an [issue](https://github.com/softeria/ms-365-mcp-server/issues)
-- Start a [discussion](https://github.com/softeria/ms-365-mcp-server/discussions)
+- Create an [issue](https://github.com/hurtener/ms-365-mcp-server/issues)
+- Start a [discussion](https://github.com/hurtener/ms-365-mcp-server/discussions)
 - Email: eirikb@eirikb.no
 - Discord: https://discord.gg/WvGVNScrAZ or @eirikb
 
