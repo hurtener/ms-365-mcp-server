@@ -95,6 +95,38 @@ describe('custom Canvas-oriented tools', () => {
     expect(parsed.tools.some((tool) => tool.name === 'find-chats-by-participant')).toBe(true);
   });
 
+  it('exposes the availability-based calendar creator as an event write tool in discovery mode', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async () => ({ value: [] }));
+
+    registerDiscoveryTools(
+      server,
+      graphClient,
+      false,
+      'create-calendar-event-from-availability',
+      false
+    );
+
+    const searchTools = handlers.get('search-tools');
+    expect(searchTools).toBeDefined();
+
+    const result = await searchTools!({ limit: 10 });
+    const parsed = parseResult(result) as {
+      tools: Array<{ name: string; method: string; path: string }>;
+    };
+
+    expect(parsed.tools).toEqual([
+      {
+        name: 'create-calendar-event-from-availability',
+        method: 'POST',
+        path: '/me/events',
+        description:
+          'Find the best slot where attendees are available, then create the calendar event there.',
+      },
+    ]);
+  });
+
   it('includes personal-surface custom tools in discovery mode without org mode', async () => {
     const server = new McpServer({ name: 'test', version: '1.0.0' });
     const handlers = captureHandlers(server);
@@ -812,6 +844,279 @@ describe('custom Canvas-oriented tools', () => {
       start: '2026-03-12T14:00:00Z',
       score: 0.92,
     });
+  });
+
+  it('responds to calendar events through explicit RSVP tools', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      const body = JSON.parse((options?.body as string) ?? '{}') as {
+        sendResponse: boolean;
+        comment?: string;
+      };
+
+      if (endpoint === '/me/events/event-1/accept') {
+        expect(body).toMatchObject({ sendResponse: true, comment: 'See you there' });
+        return {};
+      }
+
+      if (endpoint === '/me/events/event-1/decline') {
+        expect(body).toMatchObject({ sendResponse: false });
+        return {};
+      }
+
+      if (endpoint === '/me/events/event-1/tentativelyAccept') {
+        expect(body).toMatchObject({ sendResponse: true });
+        return {};
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(
+      server,
+      graphClient,
+      false,
+      'accept-calendar-event|decline-calendar-event|tentatively-accept-calendar-event',
+      false
+    );
+
+    const acceptResult = await handlers.get('accept-calendar-event')!({
+      eventId: 'event-1',
+      sendResponse: true,
+      comment: 'See you there',
+    });
+    const declineResult = await handlers.get('decline-calendar-event')!({
+      eventId: 'event-1',
+      sendResponse: false,
+    });
+    const tentativeResult = await handlers.get('tentatively-accept-calendar-event')!({
+      eventId: 'event-1',
+    });
+
+    expect(parseResult(acceptResult)).toMatchObject({
+      eventId: 'event-1',
+      response: 'accepted',
+      sendResponse: true,
+      comment: 'See you there',
+    });
+    expect(parseResult(declineResult)).toMatchObject({
+      eventId: 'event-1',
+      response: 'declined',
+      sendResponse: false,
+    });
+    expect(parseResult(tentativeResult)).toMatchObject({
+      eventId: 'event-1',
+      response: 'tentativelyAccepted',
+      sendResponse: true,
+    });
+  });
+
+  it('create-calendar-event-from-availability chooses a fully-available slot before creating', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      if (endpoint.startsWith('/users?')) {
+        return {
+          value: [
+            {
+              id: 'juan-id',
+              displayName: 'Juan Casiraghi',
+              mail: 'juan@company.com',
+              userPrincipalName: 'juan@company.com',
+            },
+          ],
+        };
+      }
+
+      if (endpoint === '/me/findMeetingTimes') {
+        return {
+          meetingTimeSuggestions: [
+            {
+              meetingTimeSlot: {
+                start: { dateTime: '2026-03-12T15:00:00Z' },
+                end: { dateTime: '2026-03-12T15:30:00Z' },
+              },
+              confidence: 0.99,
+              attendeeAvailability: [
+                {
+                  availability: 'busy',
+                  attendee: {
+                    emailAddress: { name: 'Juan Casiraghi', address: 'juan@company.com' },
+                  },
+                },
+              ],
+            },
+            {
+              meetingTimeSlot: {
+                start: { dateTime: '2026-03-12T14:00:00Z' },
+                end: { dateTime: '2026-03-12T14:30:00Z' },
+              },
+              confidence: 0.85,
+              attendeeAvailability: [
+                {
+                  availability: 'free',
+                  attendee: {
+                    emailAddress: { name: 'Juan Casiraghi', address: 'juan@company.com' },
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      if (endpoint === '/me/events') {
+        const body = JSON.parse((options?.body as string) ?? '{}') as {
+          subject: string;
+          start: { dateTime: string };
+          end: { dateTime: string };
+          attendees: Array<{ emailAddress: { address: string } }>;
+        };
+        expect(body.subject).toBe('Planning sync');
+        expect(body.start.dateTime).toBe('2026-03-12T14:00:00Z');
+        expect(body.end.dateTime).toBe('2026-03-12T14:30:00Z');
+        expect(body.attendees[0].emailAddress.address).toBe('juan@company.com');
+        return {
+          id: 'event-1',
+          subject: body.subject,
+          start: body.start,
+          end: body.end,
+          attendees: [
+            {
+              emailAddress: { name: 'Juan Casiraghi', address: 'juan@company.com' },
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(
+      server,
+      graphClient,
+      false,
+      'create-calendar-event-from-availability',
+      false
+    );
+
+    const result = await handlers.get('create-calendar-event-from-availability')!({
+      subject: 'Planning sync',
+      attendees: ['juan@company.com'],
+      windowStart: '2026-03-12T09:00:00Z',
+      windowEnd: '2026-03-12T18:00:00Z',
+      durationMinutes: 30,
+      isOnlineMeeting: true,
+    });
+    const parsed = parseResult(result) as {
+      event: { id: string; start: string; end: string };
+      chosenSlot: { start: string; allAttendeesAvailable: boolean };
+    };
+
+    expect(parsed.event).toMatchObject({
+      id: 'event-1',
+      start: '2026-03-12T14:00:00Z',
+      end: '2026-03-12T14:30:00Z',
+    });
+    expect(parsed.chosenSlot).toMatchObject({
+      start: '2026-03-12T14:00:00Z',
+      allAttendeesAvailable: true,
+    });
+  });
+
+  it('create-calendar-event-from-availability returns a structured error when no fully-free slot exists', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (endpoint === '/me/findMeetingTimes') {
+        return {
+          meetingTimeSuggestions: [
+            {
+              meetingTimeSlot: {
+                start: { dateTime: '2026-03-12T15:00:00Z' },
+                end: { dateTime: '2026-03-12T15:30:00Z' },
+              },
+              confidence: 0.95,
+              attendeeAvailability: [
+                {
+                  availability: 'busy',
+                  attendee: {
+                    emailAddress: { name: 'External', address: 'external@example.com' },
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(
+      server,
+      graphClient,
+      false,
+      'create-calendar-event-from-availability',
+      false
+    );
+
+    const result = await handlers.get('create-calendar-event-from-availability')!({
+      subject: 'Blocked sync',
+      attendees: ['external@example.com'],
+      windowStart: '2026-03-12T09:00:00Z',
+      windowEnd: '2026-03-12T18:00:00Z',
+      durationMinutes: 30,
+    });
+    const parsed = parseResult(result) as {
+      error: string;
+      suggestions: Array<{ blockedAttendeeCount: number }>;
+    };
+
+    expect(result.isError).toBe(true);
+    expect(parsed.error).toBe('not_found');
+    expect(parsed.suggestions[0].blockedAttendeeCount).toBe(1);
+  });
+
+  it('create-calendar-event-from-availability preserves ambiguous attendee candidates', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async () => ({
+      value: [
+        {
+          id: 'user-1',
+          displayName: 'Juan Casiraghi',
+          mail: 'juan@company.com',
+          userPrincipalName: 'juan@company.com',
+        },
+        {
+          id: 'user-2',
+          displayName: 'Juan Casiraghi',
+          mail: 'juan.casiraghi@company.com',
+          userPrincipalName: 'juan.casiraghi@company.com',
+        },
+      ],
+    }));
+
+    registerGraphTools(server, graphClient, false, 'create-calendar-event-from-availability', true);
+
+    const result = await handlers.get('create-calendar-event-from-availability')!({
+      subject: 'Planning sync',
+      attendees: ['Juan Casiraghi'],
+      windowStart: '2026-03-12T09:00:00Z',
+      windowEnd: '2026-03-12T18:00:00Z',
+      durationMinutes: 30,
+    });
+    const parsed = parseResult(result) as {
+      error: string;
+      candidates: Array<{ rank: number; label: string }>;
+    };
+
+    expect(result.isError).toBe(true);
+    expect(parsed.error).toBe('ambiguous_match');
+    expect(parsed.candidates[0].rank).toBe(1);
+    expect(parsed.candidates[0].label).toContain('Juan Casiraghi');
   });
 
   it('search-tasks applies text and status filters across task lists', async () => {
