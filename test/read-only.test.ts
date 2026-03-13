@@ -71,12 +71,11 @@ describe('Read-Only Mode', () => {
 
     registerGraphTools(mockServer, {} as GraphClient, options.readOnly);
 
-    expect(mockServer.tool).toHaveBeenCalledTimes(1);
-
     const toolCalls = mockServer.tool.mock.calls.map((call: unknown[]) => call[0]);
     expect(toolCalls).toContain('list-mail-messages');
     expect(toolCalls).not.toContain('send-mail');
     expect(toolCalls).not.toContain('delete-mail-message');
+    expect(toolCalls).toContain('search-mail');
   });
 
   it('should register all endpoints when not in read-only mode', () => {
@@ -87,11 +86,10 @@ describe('Read-Only Mode', () => {
 
     registerGraphTools(mockServer, {} as GraphClient, options.readOnly);
 
-    expect(mockServer.tool).toHaveBeenCalledTimes(3);
-
     const toolCalls = mockServer.tool.mock.calls.map((call: unknown[]) => call[0]);
     expect(toolCalls).toContain('list-mail-messages');
     expect(toolCalls).toContain('send-mail');
     expect(toolCalls).toContain('delete-mail-message');
+    expect(toolCalls).toContain('search-mail');
   });
 });

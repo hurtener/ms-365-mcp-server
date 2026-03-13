@@ -95,6 +95,25 @@ describe('custom Canvas-oriented tools', () => {
     expect(parsed.tools.some((tool) => tool.name === 'find-chats-by-participant')).toBe(true);
   });
 
+  it('includes personal-surface custom tools in discovery mode without org mode', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async () => ({ value: [] }));
+
+    registerDiscoveryTools(server, graphClient, false, 'resolve-drive-path|search-mail', false);
+
+    const searchTools = handlers.get('search-tools');
+    expect(searchTools).toBeDefined();
+
+    const result = await searchTools!({ limit: 20 });
+    const parsed = parseResult(result) as { tools: Array<{ name: string }> };
+
+    expect(parsed.tools.map((tool) => tool.name).sort()).toEqual([
+      'resolve-drive-path',
+      'search-mail',
+    ]);
+  });
+
   it('applies enabled-tools filtering in discovery mode', async () => {
     const server = new McpServer({ name: 'test', version: '1.0.0' });
     const handlers = captureHandlers(server);
@@ -118,6 +137,22 @@ describe('custom Canvas-oriented tools', () => {
     const parsedExecute = parseResult(executeResult) as { error: string };
     expect(executeResult.isError).toBe(true);
     expect(parsedExecute.error).toContain('Tool not found');
+  });
+
+  it('does not register mutating custom tools in read-only mode', () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async () => ({ value: [] }));
+
+    registerGraphTools(
+      server,
+      graphClient,
+      true,
+      'create-text-file|search-mail|complete-task|list-tasks',
+      false
+    );
+
+    expect(Array.from(handlers.keys()).sort()).toEqual(['list-tasks', 'search-mail']);
   });
 
   it('adds custom tool scopes when building filtered auth scopes', () => {
@@ -573,5 +608,420 @@ describe('custom Canvas-oriented tools', () => {
       roles: ['member', 'owner'],
       membershipOrigins: ['direct', 'indirect'],
     });
+  });
+
+  it('adds expanded custom tool scopes for files, sites, calendar, tasks, mail, and people', () => {
+    const scopes = buildScopesFromEndpoints(
+      true,
+      'resolve-drive-path|list-sites|search-calendar-events|search-tasks|search-mail|get-user'
+    );
+
+    expect(scopes).toContain('Files.Read');
+    expect(scopes).toContain('Sites.Read.All');
+    expect(scopes).toContain('Calendars.Read');
+    expect(scopes).toContain('Tasks.Read');
+    expect(scopes).toContain('Mail.Read');
+    expect(scopes).toContain('User.Read.All');
+  });
+
+  it('resolve-drive-path prefers explicit driveId and returns normalized file metadata', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      expect(endpoint).toBe(
+        '/drives/drive-1/root:/Projects/Q1/plan.docx:?$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      );
+      return {
+        id: 'item-1',
+        name: 'plan.docx',
+        size: 12345,
+        webUrl: 'https://contoso.sharepoint.com/plan.docx',
+        file: {
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        },
+        parentReference: {
+          driveId: 'drive-1',
+          path: '/drives/drive-1/root:/Projects/Q1',
+        },
+      };
+    });
+
+    registerGraphTools(server, graphClient, false, 'resolve-drive-path', false);
+
+    const result = await handlers.get('resolve-drive-path')!({
+      path: '/Projects/Q1/plan.docx',
+      driveId: 'drive-1',
+    });
+    const parsed = parseResult(result) as {
+      id: string;
+      driveId: string;
+      path: string;
+      name: string;
+      isFolder: boolean;
+    };
+
+    expect(parsed).toMatchObject({
+      id: 'item-1',
+      driveId: 'drive-1',
+      path: '/Projects/Q1/plan.docx',
+      name: 'plan.docx',
+      isFolder: false,
+    });
+  });
+
+  it('list-sites returns normalized site summaries in org mode', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      expect(endpoint).toContain('/sites?');
+      expect((options?.headers as Record<string, string>).ConsistencyLevel).toBe('eventual');
+      return {
+        value: [
+          {
+            id: 'site-1',
+            name: 'marketing',
+            displayName: 'Marketing Team',
+            webUrl: 'https://contoso.sharepoint.com/sites/marketing',
+          },
+        ],
+      };
+    });
+
+    registerGraphTools(server, graphClient, false, 'list-sites', true);
+
+    const result = await handlers.get('list-sites')!({ limit: 10 });
+    const parsed = parseResult(result) as {
+      items: Array<{ siteId: string; displayName: string; isPersonalSite: boolean }>;
+    };
+
+    expect(parsed.items[0]).toMatchObject({
+      siteId: 'site-1',
+      displayName: 'Marketing Team',
+      isPersonalSite: false,
+    });
+  });
+
+  it('search-calendar-events filters calendarView results by query text', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      expect(endpoint).toContain('/me/calendarView?');
+      return {
+        value: [
+          {
+            id: 'event-1',
+            subject: 'Project kickoff',
+            start: { dateTime: '2026-03-12T14:00:00Z' },
+            end: { dateTime: '2026-03-12T15:00:00Z' },
+            organizer: {
+              emailAddress: { name: 'Juan Casiraghi', address: 'juan@company.com' },
+            },
+          },
+          {
+            id: 'event-2',
+            subject: 'Random sync',
+            start: { dateTime: '2026-03-12T16:00:00Z' },
+            end: { dateTime: '2026-03-12T16:30:00Z' },
+          },
+        ],
+      };
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-calendar-events', false);
+
+    const result = await handlers.get('search-calendar-events')!({
+      query: 'kickoff',
+      start: '2026-03-01T00:00:00Z',
+      end: '2026-03-31T23:59:59Z',
+      limit: 10,
+    });
+    const parsed = parseResult(result) as { items: Array<{ id: string; subject: string }> };
+
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0]).toMatchObject({ id: 'event-1', subject: 'Project kickoff' });
+  });
+
+  it('find-availability allows external email attendees without directory resolution', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      if (endpoint.startsWith('/users?')) {
+        throw new Error('Microsoft Graph API error: 404 Not Found');
+      }
+
+      if (endpoint === '/me/findMeetingTimes') {
+        const body = JSON.parse((options?.body as string) ?? '{}') as {
+          attendees: Array<{ emailAddress: { address: string } }>;
+        };
+        expect(body.attendees[0].emailAddress.address).toBe('external@example.com');
+        return {
+          meetingTimeSuggestions: [
+            {
+              meetingTimeSlot: {
+                start: { dateTime: '2026-03-12T14:00:00Z' },
+                end: { dateTime: '2026-03-12T14:30:00Z' },
+              },
+              confidence: 0.92,
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'find-availability', false);
+
+    const result = await handlers.get('find-availability')!({
+      participants: ['external@example.com'],
+      start: '2026-03-12T09:00:00Z',
+      end: '2026-03-12T18:00:00Z',
+      durationMinutes: 30,
+    });
+    const parsed = parseResult(result) as {
+      slots: Array<{ start: string; score: number }>;
+    };
+
+    expect(parsed.slots[0]).toMatchObject({
+      start: '2026-03-12T14:00:00Z',
+      score: 0.92,
+    });
+  });
+
+  it('search-tasks applies text and status filters across task lists', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (endpoint.startsWith('/me/todo/lists?')) {
+        return {
+          value: [{ id: 'list-1', displayName: 'Tasks', wellknownListName: 'defaultList' }],
+        };
+      }
+
+      if (endpoint === '/me/todo/lists/list-1/tasks?$top=200&$select=id,status') {
+        return {
+          value: [
+            { id: 'task-1', status: 'notStarted' },
+            { id: 'task-2', status: 'completed' },
+          ],
+        };
+      }
+
+      if (endpoint === '/me/todo/lists/list-1/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body') {
+        return {
+          value: [
+            {
+              id: 'task-1',
+              title: 'Deploy prod',
+              status: 'notStarted',
+              importance: 'high',
+              body: { content: 'Tonight after QA signoff' },
+            },
+            {
+              id: 'task-2',
+              title: 'Write notes',
+              status: 'completed',
+              importance: 'normal',
+              body: { content: 'Postmortem' },
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-tasks', false);
+
+    const result = await handlers.get('search-tasks')!({
+      query: 'deploy',
+      status: 'notStarted',
+      limit: 10,
+    });
+    const parsed = parseResult(result) as { items: Array<{ taskId: string; title: string }> };
+
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0]).toMatchObject({ taskId: 'task-1', title: 'Deploy prod' });
+  });
+
+  it('list-tasks returns aggregate nextCursor when paging across all task lists', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (endpoint.startsWith('/me/todo/lists?')) {
+        return {
+          value: [
+            { id: 'list-1', displayName: 'Tasks', wellknownListName: 'defaultList' },
+            { id: 'list-2', displayName: 'Backlog', wellknownListName: 'none' },
+          ],
+        };
+      }
+
+      if (endpoint === '/me/todo/lists/list-1/tasks?$top=200&$select=id,status') {
+        return { value: [{ id: 'task-1', status: 'notStarted' }] };
+      }
+
+      if (endpoint === '/me/todo/lists/list-2/tasks?$top=200&$select=id,status') {
+        return { value: [{ id: 'task-2', status: 'notStarted' }] };
+      }
+
+      if (endpoint === '/me/todo/lists/list-1/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body') {
+        return {
+          value: [{ id: 'task-1', title: 'First', status: 'notStarted', dueDateTime: { dateTime: '2026-03-13T10:00:00Z' } }],
+        };
+      }
+
+      if (endpoint === '/me/todo/lists/list-2/tasks?$top=100&$select=id,title,status,importance,dueDateTime,body') {
+        return {
+          value: [{ id: 'task-2', title: 'Second', status: 'notStarted', dueDateTime: { dateTime: '2026-03-14T10:00:00Z' } }],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'list-tasks', false);
+
+    const firstResult = await handlers.get('list-tasks')!({ limit: 1 });
+    const firstParsed = parseResult(firstResult) as {
+      items: Array<{ taskId: string }>;
+      nextCursor?: string;
+    };
+
+    expect(firstParsed.items[0].taskId).toBe('task-1');
+    expect(firstParsed.nextCursor).toBeTruthy();
+
+    const secondResult = await handlers.get('list-tasks')!({
+      limit: 1,
+      cursor: firstParsed.nextCursor,
+    });
+    const secondParsed = parseResult(secondResult) as { items: Array<{ taskId: string }> };
+    expect(secondParsed.items[0].taskId).toBe('task-2');
+  });
+
+  it('search-mail scopes to the requested folder and returns normalized messages', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      expect(endpoint).toContain('/me/mailFolders/inbox/messages?');
+      expect((options?.headers as Record<string, string>).ConsistencyLevel).toBe('eventual');
+      return {
+        value: [
+          {
+            id: 'msg-1',
+            subject: 'Invoice',
+            from: {
+              emailAddress: { name: 'Mauro Benitez', address: 'mauro@company.com' },
+            },
+            toRecipients: [
+              {
+                emailAddress: { name: 'Santiago', address: 'santiago@company.com' },
+              },
+            ],
+            receivedDateTime: '2026-03-12T10:00:00Z',
+            bodyPreview: 'Invoice attached',
+            hasAttachments: true,
+          },
+        ],
+      };
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-mail', false);
+
+    const result = await handlers.get('search-mail')!({
+      query: 'invoice Mauro',
+      folder: 'Inbox',
+      limit: 10,
+    });
+    const parsed = parseResult(result) as {
+      items: Array<{ messageId: string; subject: string; hasAttachments: boolean }>;
+    };
+
+    expect(parsed.items[0]).toMatchObject({
+      messageId: 'msg-1',
+      subject: 'Invoice',
+      hasAttachments: true,
+    });
+  });
+
+  it('create-text-file preserves non-not-found lookup failures instead of attempting a write', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (endpoint.includes('/me/drive/root:/blocked.txt:')) {
+        throw new Error('Microsoft Graph API scope error: 403 Forbidden - scope error');
+      }
+
+      if (endpoint.endsWith('/content')) {
+        throw new Error('Should not attempt write after lookup scope failure');
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'create-text-file', false);
+
+    const result = await handlers.get('create-text-file')!({
+      path: '/blocked.txt',
+      content: 'hello',
+    });
+    const parsed = parseResult(result) as { error: string };
+
+    expect(result.isError).toBe(true);
+    expect(parsed.error).toBe('insufficient_scope');
+  });
+
+  it('search-sharepoint-content filters by site webUrl instead of opaque siteId string matching', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (endpoint === '/sites/site-1?$select=webUrl') {
+        return { webUrl: 'https://contoso.sharepoint.com/sites/marketing' };
+      }
+
+      if (endpoint === '/search/query') {
+        return {
+          value: [
+            {
+              hitsContainers: [
+                {
+                  hits: [
+                    {
+                      resource: {
+                        id: 'doc-1',
+                        title: 'Brand deck',
+                        webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/brand.pptx',
+                      },
+                    },
+                    {
+                      resource: {
+                        id: 'doc-2',
+                        title: 'Wrong site',
+                        webUrl: 'https://contoso.sharepoint.com/sites/sales/Shared%20Documents/qbr.pptx',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-sharepoint-content', true);
+
+    const result = await handlers.get('search-sharepoint-content')!({
+      query: 'brand',
+      siteId: 'site-1',
+      limit: 10,
+    });
+    const parsed = parseResult(result) as { items: Array<{ id: string }> };
+
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0].id).toBe('doc-1');
   });
 });

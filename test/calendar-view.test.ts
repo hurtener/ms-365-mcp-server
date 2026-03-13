@@ -136,8 +136,17 @@ describe('Calendar View Tools', () => {
       registerGraphTools(mockServer, mockGraphClient, false);
 
       for (const call of mockServer.tool.mock.calls) {
+        const toolName = call[0] as string;
         const paramSchema = call[2] as Record<string, z.ZodTypeAny>;
-        expect(paramSchema).toHaveProperty('fetchAllPages');
+        if (
+          [
+            'get-calendar-view',
+            'get-specific-calendar-view',
+            'list-calendar-event-instances',
+          ].includes(toolName)
+        ) {
+          expect(paramSchema).toHaveProperty('fetchAllPages');
+        }
       }
     });
 

@@ -8,17 +8,17 @@ export interface ToolCategory {
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   mail: {
     name: 'mail',
-    pattern: /mail|attachment|draft/i,
+    pattern: /mail|attachment|draft|recipient|thread/i,
     description: 'Email operations (read, send, manage folders, attachments)',
   },
   calendar: {
     name: 'calendar',
-    pattern: /calendar|event/i,
+    pattern: /calendar|event|attendee|availability|meeting/i,
     description: 'Calendar and event management',
   },
   files: {
     name: 'files',
-    pattern: /drive|file|upload|download|folder|item/i,
+    pattern: /drive|file|upload|download|folder|item|path|document/i,
     description: 'OneDrive file and folder operations',
   },
   personal: {
@@ -30,7 +30,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   },
   work: {
     name: 'work',
-    pattern: /team|channel|chat|sharepoint|planner|site|list|shared|search|query|presence|resolve-person/i,
+    pattern:
+      /team|channel|chat|sharepoint|planner|site|list|shared|search|query|presence|resolve-person|manager|report/i,
     description: 'Organization/work tools (Teams, SharePoint, shared mailboxes, search)',
     requiresOrgMode: true,
   },
@@ -46,7 +47,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   },
   tasks: {
     name: 'tasks',
-    pattern: /todo|planner|task/i,
+    pattern: /todo|planner|task|complete-task|reopen-task/i,
     description: 'Task and planning tools (To Do, Planner)',
   },
   onenote: {
@@ -56,12 +57,13 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   },
   search: {
     name: 'search',
-    pattern: /search|query|resolve-person/i,
+    pattern: /search|query|resolve-person|resolve-drive-path|search-mail-by-person/i,
     description: 'Microsoft Search capabilities',
   },
   users: {
     name: 'users',
-    pattern: /user|list-users|search-users|resolve-person|presence/i,
+    pattern:
+      /user|list-users|search-users|resolve-person|presence|get-user|get-manager|get-direct-reports|attendee|recipient/i,
     description: 'User directory access',
     requiresOrgMode: true,
   },

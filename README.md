@@ -155,35 +155,98 @@ send-shared-mailbox-mail</sub>
 **User Management**  
 <sub>list-users, search-users, resolve-person, list-user-presence</sub>
 
-### Canvas-Oriented Resolution Tools
+### Canvas-Oriented Custom Tools
 
-This fork includes a custom resolution layer aimed at chat-first UX in Canvas and other agents. These tools do not
-change the raw Graph tool payloads; they add normalized, ranked responses on top:
+This fork includes a custom normalization and resolution layer aimed at Canvas and other chat-first agents. These tools
+do not change the raw Graph tool payloads; they add normalized, ranked, path-first responses on top.
 
-- `search-users`: ranked people resolution by display name, mail, and UPN
-- `list-chat-members`: normalized chat roster for 1:1, group, and meeting chats
-- `get-chat-details`: normalized chat metadata with optional inline members
-- `find-chats-by-participant`: ranks the best chat targets for a user
-- `list-recent-chats`: recent chats with opaque pagination
-- `get-chat-context`: chat metadata, members, and recent message previews in one call
-- `search-messages`: Teams chat search with optional participant narrowing
-- `resolve-person`: high-confidence single-person resolver with structured ambiguity
-- `list-user-presence`: batch Teams presence lookup
-- `list-channel-members`: normalized Teams channel roster
+**People**
+- `search-users`
+- `resolve-person`
+- `get-user`
+- `get-manager`
+- `get-direct-reports`
+- `list-user-presence`
+- `search-people-across-surfaces`
+
+**Teams**
+- `list-chat-members`
+- `get-chat-details`
+- `find-chats-by-participant`
+- `list-recent-chats`
+- `get-chat-context`
+- `search-messages`
+- `list-channel-members`
+
+**Files**
+- `resolve-drive-path`
+- `list-folder`
+- `search-files`
+- `get-file-metadata`
+- `get-file-content`
+- `create-text-file`
+- `update-text-file`
+- `delete-file`
+
+**SharePoint**
+- `list-sites`
+- `search-sites`
+- `list-site-drives`
+- `list-document-libraries`
+- `search-site-files`
+- `search-sharepoint-content`
+- `list-sharepoint-pages`
+- `list-sharepoint-lists`
+- `list-sharepoint-list-items`
+- `search-sharepoint-pages`
+
+**Calendar**
+- `search-calendar-events`
+- `resolve-attendees`
+- `find-availability`
+- `get-calendar-event-details`
+- `suggest-meeting-times`
+- `create-calendar-event-with-attendees`
+- `list-calendars-details`
+
+**Tasks**
+- `search-tasks`
+- `list-task-lists`
+- `list-tasks`
+- `get-task-context`
+- `complete-task`
+- `reopen-task`
+
+**Mail**
+- `search-mail`
+- `resolve-mail-recipients`
+- `list-attachments`
+- `get-attachment-content`
+- `thread-mail`
+- `find-related-mail`
+- `search-mail-by-person`
 
 ### Custom Tool Scopes
 
 These custom tools request scopes independently from `endpoints.json` so they work with filtered tool sets:
 
-| Tool | Scopes |
+| Tool family | Scopes |
 | --- | --- |
-| `search-users`, `resolve-person` | `User.Read.All` |
-| `list-chat-members`, `get-chat-details`, `list-recent-chats` | `Chat.Read` |
-| `find-chats-by-participant` | `Chat.Read`, `User.Read.All` |
-| `get-chat-context` | `Chat.Read`, `ChatMessage.Read` |
-| `search-messages` | `Chat.Read`, `ChannelMessage.Read.All` |
-| `list-user-presence` | `Presence.Read.All` |
-| `list-channel-members` | `ChannelMember.Read.All` |
+| People resolution (`search-users`, `resolve-person`, `get-user`, `get-manager`, `get-direct-reports`) | `User.Read.All` |
+| Presence (`list-user-presence`) | `Presence.Read.All` |
+| Teams chat resolution (`list-chat-members`, `get-chat-details`, `list-recent-chats`) | `Chat.Read` |
+| Teams participant/message search (`find-chats-by-participant`, `get-chat-context`, `search-messages`) | `Chat.Read`, `User.Read.All`, `ChatMessage.Read`, `ChannelMessage.Read.All` as needed |
+| Teams channel members (`list-channel-members`) | `ChannelMember.Read.All` |
+| Files (`resolve-drive-path`, `list-folder`, `search-files`, `get-file-*`) | `Files.Read`, `Sites.Read.All` |
+| File writes (`create-text-file`, `update-text-file`, `delete-file`) | `Files.ReadWrite`, `Sites.ReadWrite.All` |
+| SharePoint (`list-sites`, `search-sites`, `list-site-drives`, `search-site-files`, `search-sharepoint-*`) | `Sites.Read.All` |
+| Calendar (`search-calendar-events`, `get-calendar-event-details`, `list-calendars-details`) | `Calendars.Read` |
+| Meeting resolution (`resolve-attendees`, `find-availability`, `suggest-meeting-times`) | `Calendars.Read`, `User.Read.All` |
+| Calendar writes (`create-calendar-event-with-attendees`) | `Calendars.ReadWrite`, `User.Read.All` |
+| Tasks (`search-tasks`, `list-task-lists`, `list-tasks`, `get-task-context`) | `Tasks.Read` |
+| Task updates (`complete-task`, `reopen-task`) | `Tasks.ReadWrite` |
+| Mail (`search-mail`, `list-attachments`, `get-attachment-content`, `thread-mail`, `find-related-mail`) | `Mail.Read` |
+| Mail recipient/person resolution (`resolve-mail-recipients`, `search-mail-by-person`) | `Mail.Read`, `User.Read.All` |
 
 ### Custom Tool Contracts
 
@@ -196,6 +259,7 @@ All Canvas-oriented custom tools follow these response conventions:
 - opaque `cursor` / `nextCursor` values
 - structured identity objects instead of raw Graph fragments
 - MCP-friendly structured errors with `isError: true`
+- path-first file operations wherever Microsoft exposes path semantics
 
 #### Error Contract
 
@@ -217,14 +281,26 @@ Custom tools return structured JSON errors in the response body:
 
 Standard error codes currently used:
 
+- `not_found`
 - `user_not_found`
 - `chat_not_found`
 - `chat_members_unavailable`
 - `insufficient_scope`
 - `ambiguous_match`
+- `unsupported_operation`
 - `unsupported_chat_type`
 - `unsupported_scope`
 - `invalid_cursor`
+
+### Non-Teams Contract Highlights
+
+- Files and SharePoint tools return path-first `driveId` + `itemId` summaries so Canvas does not need Graph IDs up
+  front.
+- Calendar tools return enriched organizer, attendee, location, online meeting, and body preview fields through
+  `get-calendar-event-details`.
+- Task tools add filtering, counts, and task context on top of the raw To Do endpoints.
+- Mail tools normalize message and attachment shapes and add person-aware search wrappers.
+- All new collection tools return `{ items, nextCursor? }`.
 
 #### `search-users`
 

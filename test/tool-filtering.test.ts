@@ -51,7 +51,8 @@ describe('Tool Filtering', () => {
   it('should register all tools when no filter is provided', () => {
     registerGraphTools(server, graphClient, false);
 
-    expect(toolSpy).toHaveBeenCalledTimes(5);
+    const toolNames = toolSpy.mock.calls.map((call: unknown[]) => call[0] as string);
+    expect(toolNames.length).toBeGreaterThanOrEqual(5);
     expect(toolSpy).toHaveBeenCalledWith(
       'list-mail-messages',
       expect.any(String),
@@ -87,12 +88,13 @@ describe('Tool Filtering', () => {
       expect.any(Object),
       expect.any(Function)
     );
+    expect(toolNames).toContain('search-mail');
   });
 
   it('should filter tools by regex pattern - mail only', () => {
     registerGraphTools(server, graphClient, false, 'mail');
 
-    expect(toolSpy).toHaveBeenCalledTimes(2);
+    const toolNames = toolSpy.mock.calls.map((call: unknown[]) => call[0] as string);
     expect(toolSpy).toHaveBeenCalledWith(
       'list-mail-messages',
       expect.any(String),
@@ -107,12 +109,14 @@ describe('Tool Filtering', () => {
       expect.any(Object),
       expect.any(Function)
     );
+    expect(toolNames).toContain('search-mail');
+    expect(toolNames.every((name) => /mail/i.test(name))).toBe(true);
   });
 
   it('should filter tools by regex pattern - calendar or excel', () => {
     registerGraphTools(server, graphClient, false, 'calendar|excel');
 
-    expect(toolSpy).toHaveBeenCalledTimes(2);
+    const toolNames = toolSpy.mock.calls.map((call: unknown[]) => call[0] as string);
     expect(toolSpy).toHaveBeenCalledWith(
       'list-calendar-events',
       expect.any(String),
@@ -127,18 +131,21 @@ describe('Tool Filtering', () => {
       expect.any(Object),
       expect.any(Function)
     );
+    expect(toolNames.every((name) => /calendar|excel/i.test(name))).toBe(true);
   });
 
   it('should handle invalid regex patterns gracefully', () => {
     registerGraphTools(server, graphClient, false, '[invalid regex');
 
-    expect(toolSpy).toHaveBeenCalledTimes(5);
+    const toolNames = toolSpy.mock.calls.map((call: unknown[]) => call[0] as string);
+    expect(toolNames.length).toBeGreaterThanOrEqual(5);
+    expect(toolNames).toContain('search-mail');
   });
 
   it('should combine read-only and filtering correctly', () => {
     registerGraphTools(server, graphClient, true, 'mail');
 
-    expect(toolSpy).toHaveBeenCalledTimes(1);
+    const toolNames = toolSpy.mock.calls.map((call: unknown[]) => call[0] as string);
     expect(toolSpy).toHaveBeenCalledWith(
       'list-mail-messages',
       expect.any(String),
@@ -146,6 +153,8 @@ describe('Tool Filtering', () => {
       expect.any(Object),
       expect.any(Function)
     );
+    expect(toolNames).not.toContain('send-mail');
+    expect(toolNames.every((name) => /mail/i.test(name))).toBe(true);
   });
 
   it('should register no tools when pattern matches nothing', () => {

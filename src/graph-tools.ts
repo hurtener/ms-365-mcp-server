@@ -563,6 +563,7 @@ export function registerGraphTools(
     server,
     graphClient,
     enabledToolsRegex,
+    readOnly,
     orgMode,
     authManager,
     multiAccount,
@@ -644,7 +645,11 @@ function buildToolsRegistry(
     accountNames
   );
   for (const [name, tool] of customTools) {
-    if (!orgMode) {
+    if (tool.requiresOrgMode && !orgMode) {
+      continue;
+    }
+
+    if (readOnly && !tool.readOnlyHint) {
       continue;
     }
 
