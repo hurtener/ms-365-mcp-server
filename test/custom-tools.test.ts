@@ -828,6 +828,588 @@ describe('custom Canvas-oriented tools', () => {
       siteId: 'site-1',
       displayName: 'Marketing Team',
       isPersonalSite: false,
+      label: 'Marketing Team',
+    });
+  });
+
+  it('search-sites supports query pagination and stable labels', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      expect((options?.headers as Record<string, string>).ConsistencyLevel).toBe('eventual');
+      if (endpoint === '/sites?$search=%22Marketing%22&$skiptoken=next') {
+        return {
+          value: [
+            {
+              id: 'site-2',
+              name: 'marketing-ops',
+              displayName: 'Marketing Ops',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing-ops',
+            },
+          ],
+        };
+      }
+
+      if (
+        endpoint === '/sites?$search=%22Marketing%22&$top=10&$select=id,name,displayName,webUrl'
+      ) {
+        return {
+          value: [
+            {
+              id: 'site-1',
+              name: 'marketing',
+              displayName: 'Marketing Team',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing',
+            },
+          ],
+          '@odata.nextLink':
+            'https://graph.microsoft.com/v1.0/sites?$search=%22Marketing%22&$skiptoken=next',
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-sites', true);
+
+    const first = parseResult(
+      await handlers.get('search-sites')!({ query: 'Marketing', limit: 10 })
+    ) as {
+      items: Array<{ siteId: string; label: string }>;
+      nextCursor?: string;
+    };
+
+    expect(first.items[0]).toMatchObject({
+      siteId: 'site-1',
+      label: 'Marketing Team',
+    });
+    expect(first.nextCursor).toBeTruthy();
+
+    const second = parseResult(
+      await handlers.get('search-sites')!({
+        query: 'Marketing',
+        limit: 10,
+        cursor: first.nextCursor,
+      })
+    ) as {
+      items: Array<{ siteId: string; label: string }>;
+    };
+
+    expect(second.items).toEqual([
+      {
+        siteId: 'site-2',
+        name: 'marketing-ops',
+        displayName: 'Marketing Ops',
+        webUrl: 'https://contoso.sharepoint.com/sites/marketing-ops',
+        isPersonalSite: false,
+        label: 'Marketing Ops',
+      },
+    ]);
+  });
+
+  it('lists document libraries with labels and pagination', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (endpoint === '/sites/site-1/drives?$top=2&$select=id,name,driveType,webUrl') {
+        return {
+          value: [
+            {
+              id: 'drive-1',
+              name: 'Shared Documents',
+              driveType: 'documentLibrary',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents',
+            },
+          ],
+          '@odata.nextLink': 'https://graph.microsoft.com/v1.0/sites/site-1/drives?$skiptoken=next',
+        };
+      }
+      if (endpoint === '/sites/site-1/drives?$skiptoken=next') {
+        return {
+          value: [
+            {
+              id: 'drive-2',
+              name: 'Brand Assets',
+              driveType: 'documentLibrary',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing/Brand%20Assets',
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'list-document-libraries', true);
+
+    const first = parseResult(
+      await handlers.get('list-document-libraries')!({ siteId: 'site-1', limit: 2 })
+    ) as {
+      items: Array<{ driveId: string; label: string }>;
+      nextCursor?: string;
+    };
+
+    expect(first.items[0]).toMatchObject({
+      driveId: 'drive-1',
+      label: 'Shared Documents',
+    });
+    expect(first.nextCursor).toBeTruthy();
+
+    const second = parseResult(
+      await handlers.get('list-document-libraries')!({
+        siteId: 'site-1',
+        limit: 2,
+        cursor: first.nextCursor,
+      })
+    ) as {
+      items: Array<{ driveId: string; label: string }>;
+    };
+
+    expect(second.items[0]).toMatchObject({
+      driveId: 'drive-2',
+      label: 'Brand Assets',
+    });
+  });
+
+  it('lists a SharePoint-backed folder by siteId and path', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (
+        endpoint ===
+        '/sites/site-1/drive/root:/Shared Documents/Plans:?$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      ) {
+        return {
+          id: 'folder-1',
+          name: 'Plans',
+          parentReference: {
+            driveId: 'drive-1',
+            path: '/drives/drive-1/root:/Shared Documents',
+          },
+          folder: {},
+          webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans',
+        };
+      }
+
+      if (
+        endpoint ===
+        '/drives/drive-1/items/folder-1/children?$top=2&$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      ) {
+        return {
+          value: [
+            {
+              id: 'item-1',
+              name: 'plan.docx',
+              parentReference: {
+                driveId: 'drive-1',
+                path: '/drives/drive-1/root:/Shared Documents/Plans',
+                siteId: 'site-1',
+              },
+              file: {
+                mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              },
+              webUrl:
+                'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans/plan.docx',
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'list-folder', false);
+
+    const result = parseResult(
+      await handlers.get('list-folder')!({
+        siteId: 'site-1',
+        path: '/Shared Documents/Plans',
+        limit: 2,
+      })
+    ) as {
+      items: Array<{ id: string; path: string; label: string }>;
+    };
+
+    expect(result.items[0]).toMatchObject({
+      id: 'item-1',
+      path: '/Shared Documents/Plans/plan.docx',
+      label: 'plan.docx (/Shared Documents/Plans)',
+    });
+  });
+
+  it('search-site-files supports site/path narrowing with opaque cursors', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      if (endpoint === '/sites/site-1?$select=webUrl') {
+        return { webUrl: 'https://contoso.sharepoint.com/sites/marketing' };
+      }
+      if (endpoint === '/search/query') {
+        const body = JSON.parse((options?.body as string) ?? '{}') as {
+          requests: Array<{ from: number; size: number; query: { queryString: string } }>;
+        };
+        if (body.requests[0]?.from === 0) {
+          return {
+            value: [
+              {
+                hitsContainers: [
+                  {
+                    moreResultsAvailable: true,
+                    hits: [
+                      {
+                        resource: {
+                          id: 'item-1',
+                          name: 'plan.docx',
+                          webUrl:
+                            'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans/plan.docx',
+                          parentReference: {
+                            driveId: 'drive-1',
+                            path: '/drives/drive-1/root:/Shared Documents/Plans',
+                            siteId: 'site-1',
+                          },
+                          file: {
+                            mimeType:
+                              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          };
+        }
+        if (body.requests[0]?.from === 25) {
+          return {
+            value: [
+              {
+                hitsContainers: [
+                  {
+                    hits: [
+                      {
+                        resource: {
+                          id: 'item-2',
+                          name: 'roadmap.docx',
+                          webUrl:
+                            'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans/roadmap.docx',
+                          parentReference: {
+                            driveId: 'drive-1',
+                            path: '/drives/drive-1/root:/Shared Documents/Plans',
+                            siteId: 'site-1',
+                          },
+                          file: {
+                            mimeType:
+                              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          };
+        }
+      }
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'search-site-files', true);
+
+    const first = parseResult(
+      await handlers.get('search-site-files')!({
+        siteId: 'site-1',
+        query: 'plan',
+        path: '/Shared Documents/Plans',
+        limit: 2,
+      })
+    ) as {
+      items: Array<{ id: string; path: string }>;
+      nextCursor?: string;
+    };
+
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0].path).toBe('/Shared Documents/Plans/plan.docx');
+    expect(first.nextCursor).toBeTruthy();
+
+    const second = parseResult(
+      await handlers.get('search-site-files')!({
+        siteId: 'site-1',
+        query: 'plan',
+        path: '/Shared Documents/Plans',
+        limit: 2,
+        cursor: first.nextCursor,
+      })
+    ) as {
+      items: Array<{ id: string }>;
+    };
+
+    expect(second.items[0].id).toBe('item-2');
+  });
+
+  it('reads SharePoint-backed file text and context through path-first site resolution', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      if (
+        endpoint ===
+        '/sites/site-1/drive/root:/Shared Documents/Plans/plan.md:?$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      ) {
+        return {
+          id: 'plan-1',
+          name: 'plan.md',
+          size: 42,
+          webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans/plan.md',
+          parentReference: {
+            driveId: 'drive-1',
+            path: '/drives/drive-1/root:/Shared Documents/Plans',
+            siteId: 'site-1',
+          },
+          file: { mimeType: 'text/markdown' },
+        };
+      }
+      if (endpoint === '/drives/drive-1/items/plan-1/content') {
+        expect(options?.responseType).toBe('buffer');
+        return Buffer.from('# Launch Plan\nShip it.');
+      }
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(server, graphClient, false, 'get-file-text|get-file-context', false);
+
+    const textResult = parseResult(
+      await handlers.get('get-file-text')!({
+        siteId: 'site-1',
+        path: '/Shared Documents/Plans/plan.md',
+      })
+    ) as { text: string; label: string };
+
+    const contextResult = parseResult(
+      await handlers.get('get-file-context')!({
+        siteId: 'site-1',
+        path: '/Shared Documents/Plans/plan.md',
+      })
+    ) as { file: { path: string }; previewText: string; extractionStatus: string };
+
+    expect(textResult).toMatchObject({
+      text: '# Launch Plan\nShip it.',
+      label: 'plan.md (/Shared Documents/Plans)',
+    });
+    expect(contextResult).toMatchObject({
+      file: { path: '/Shared Documents/Plans/plan.md' },
+      extractionStatus: 'ok',
+    });
+    expect(contextResult.previewText).toContain('Launch Plan');
+  });
+
+  it('lists SharePoint pages, lists, and list items with labels and pagination', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint) => {
+      if (
+        endpoint ===
+        '/sites/site-1/pages/microsoft.graph.sitePage?$top=2&$select=id,name,title,webUrl,lastModifiedDateTime'
+      ) {
+        return {
+          value: [
+            {
+              id: 'page-1',
+              name: 'Launch.aspx',
+              title: 'Launch Home',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing/SitePages/Launch.aspx',
+              lastModifiedDateTime: '2026-03-12T10:00:00Z',
+            },
+          ],
+          '@odata.nextLink':
+            'https://graph.microsoft.com/v1.0/sites/site-1/pages/microsoft.graph.sitePage?$skiptoken=next',
+        };
+      }
+      if (endpoint === '/sites/site-1/lists?$top=2&$select=id,name,displayName,webUrl') {
+        return {
+          value: [
+            {
+              id: 'list-1',
+              name: 'launchTasks',
+              displayName: 'Launch Tasks',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing/Lists/LaunchTasks',
+            },
+          ],
+        };
+      }
+      if (endpoint === '/sites/site-1/lists/list-1/items?$expand=fields&$top=2') {
+        return {
+          value: [
+            {
+              id: 'item-1',
+              webUrl:
+                'https://contoso.sharepoint.com/sites/marketing/Lists/LaunchTasks/DispForm.aspx?ID=1',
+              fields: {
+                Title: 'Confirm launch email',
+                Status: 'Not Started',
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(
+      server,
+      graphClient,
+      false,
+      'list-sharepoint-pages|list-sharepoint-lists|list-sharepoint-list-items',
+      true
+    );
+
+    const pages = parseResult(
+      await handlers.get('list-sharepoint-pages')!({ siteId: 'site-1', limit: 2 })
+    ) as {
+      items: Array<{ pageId: string; label: string }>;
+      nextCursor?: string;
+    };
+    const lists = parseResult(
+      await handlers.get('list-sharepoint-lists')!({ siteId: 'site-1', limit: 2 })
+    ) as {
+      items: Array<{ listId: string; label: string }>;
+    };
+    const items = parseResult(
+      await handlers.get('list-sharepoint-list-items')!({
+        siteId: 'site-1',
+        listId: 'list-1',
+        limit: 2,
+      })
+    ) as {
+      items: Array<{ itemId: string; label: string; fields: { Status: string } }>;
+    };
+
+    expect(pages.items[0]).toMatchObject({ pageId: 'page-1', label: 'Launch Home' });
+    expect(pages.nextCursor).toBeTruthy();
+    expect(lists.items[0]).toMatchObject({ listId: 'list-1', label: 'Launch Tasks' });
+    expect(items.items[0]).toMatchObject({
+      itemId: 'item-1',
+      label: 'Confirm launch email',
+      fields: { Status: 'Not Started' },
+    });
+  });
+
+  it('supports a SharePoint discovery flow from site to library to file context', async () => {
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    const handlers = captureHandlers(server);
+    const graphClient = createMockGraphClient(async (endpoint, options) => {
+      if (endpoint === '/sites?$search=%22Marketing%22&$top=5&$select=id,name,displayName,webUrl') {
+        return {
+          value: [
+            {
+              id: 'site-1',
+              name: 'marketing',
+              displayName: 'Marketing Team',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing',
+            },
+          ],
+        };
+      }
+      if (endpoint === '/sites/site-1/drives?$top=5&$select=id,name,driveType,webUrl') {
+        return {
+          value: [
+            {
+              id: 'drive-1',
+              name: 'Shared Documents',
+              driveType: 'documentLibrary',
+              webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents',
+            },
+          ],
+        };
+      }
+      if (
+        endpoint ===
+        '/drives/drive-1/root:/Plans:?$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      ) {
+        return {
+          id: 'folder-1',
+          name: 'Plans',
+          parentReference: { driveId: 'drive-1', path: '/drives/drive-1/root:' },
+          folder: {},
+          webUrl: 'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans',
+        };
+      }
+      if (
+        endpoint ===
+        '/drives/drive-1/items/folder-1/children?$top=5&$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      ) {
+        return {
+          value: [
+            {
+              id: 'plan-1',
+              name: 'launch.md',
+              parentReference: { driveId: 'drive-1', path: '/drives/drive-1/root:/Plans' },
+              file: { mimeType: 'text/markdown' },
+              webUrl:
+                'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans/launch.md',
+            },
+          ],
+        };
+      }
+      if (
+        endpoint ===
+        '/drives/drive-1/root:/Plans/launch.md:?$select=id,name,size,lastModifiedDateTime,webUrl,parentReference,folder,file,lastModifiedBy'
+      ) {
+        return {
+          id: 'plan-1',
+          name: 'launch.md',
+          parentReference: { driveId: 'drive-1', path: '/drives/drive-1/root:/Plans' },
+          file: { mimeType: 'text/markdown' },
+          webUrl:
+            'https://contoso.sharepoint.com/sites/marketing/Shared%20Documents/Plans/launch.md',
+        };
+      }
+      if (endpoint === '/drives/drive-1/items/plan-1/content') {
+        expect(options?.responseType).toBe('buffer');
+        return Buffer.from('Launch checklist');
+      }
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    registerGraphTools(
+      server,
+      graphClient,
+      false,
+      'search-sites|list-document-libraries|list-folder|get-file-context',
+      true
+    );
+
+    const sites = parseResult(
+      await handlers.get('search-sites')!({ query: 'Marketing', limit: 5 })
+    ) as {
+      items: Array<{ siteId: string }>;
+    };
+    const libraries = parseResult(
+      await handlers.get('list-document-libraries')!({ siteId: sites.items[0].siteId, limit: 5 })
+    ) as {
+      items: Array<{ driveId: string }>;
+    };
+    const folder = parseResult(
+      await handlers.get('list-folder')!({
+        driveId: libraries.items[0].driveId,
+        path: '/Plans',
+        limit: 5,
+      })
+    ) as {
+      items: Array<{ path: string }>;
+    };
+    const context = parseResult(
+      await handlers.get('get-file-context')!({
+        driveId: libraries.items[0].driveId,
+        path: folder.items[0].path,
+      })
+    ) as {
+      file: { path: string };
+      text: string;
+    };
+
+    expect(context).toMatchObject({
+      file: { path: '/Plans/launch.md' },
+      text: 'Launch checklist',
     });
   });
 

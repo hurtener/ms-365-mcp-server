@@ -332,6 +332,12 @@ For `insufficient_scope` responses, custom tools now include:
 
 - Files and SharePoint tools return path-first `driveId` + `itemId` summaries so Canvas does not need Graph IDs up
   front.
+- SharePoint file access is path-first and site-aware with this precedence:
+  1. explicit `driveId`
+  2. explicit `siteId` without `driveId`
+  3. fallback to the signed-in user's default drive
+- `list-document-libraries` is the preferred app-facing entrypoint for SharePoint document libraries, while
+  `list-site-drives` remains as a lower-level alias.
 - `get-file-text` and `get-file-context` provide normalized extraction for text-like files, PDFs, and common Office
   documents, while unsupported binary formats return `extractionStatus: "unsupported"`.
 - `edit-text-file` applies structured replace/append/prepend/overwrite operations and supports `previewOnly`.
@@ -347,6 +353,99 @@ For `insufficient_scope` responses, custom tools now include:
 - Mail tools now include thread/context wrappers plus direct send and draft wrappers for reply/reply-all/forward.
 - `search-m365-content` returns one normalized result surface across mail, chat messages, files, and SharePoint pages.
 - All new collection tools return `{ items, nextCursor? }`.
+
+### SharePoint App Surface
+
+The current SharePoint surface is read-oriented and retrieval-first. It is intended for app and agent workflows such as:
+
+- finding a site
+- listing document libraries
+- browsing folders by path
+- searching files within a site
+- reading SharePoint-hosted file text and context
+- searching SharePoint content and pages
+- listing lists and list items for structured data scenarios
+
+Recommended app-facing SharePoint/file entrypoints:
+
+- `list-sites`
+- `search-sites`
+- `list-document-libraries`
+- `list-folder`
+- `search-site-files`
+- `get-file-text`
+- `get-file-context`
+- `search-sharepoint-content`
+- `list-sharepoint-pages`
+
+Operational list/data follow-ups:
+
+- `list-sharepoint-lists`
+- `list-sharepoint-list-items`
+
+This milestone is intentionally read-only for SharePoint pages and lists. File editing remains available through the
+existing path-first file tools.
+
+#### SharePoint Examples
+
+Find a site:
+
+```json
+{
+  "query": "Marketing",
+  "limit": 10
+}
+```
+
+List a site's document libraries:
+
+```json
+{
+  "siteId": "site-1",
+  "limit": 20
+}
+```
+
+Browse a library folder by path:
+
+```json
+{
+  "siteId": "site-1",
+  "path": "/Shared Documents/Plans",
+  "limit": 50
+}
+```
+
+Search files inside one site and optional path prefix:
+
+```json
+{
+  "siteId": "site-1",
+  "query": "launch plan",
+  "path": "/Shared Documents/Plans",
+  "limit": 25
+}
+```
+
+Read SharePoint-backed file text:
+
+```json
+{
+  "siteId": "site-1",
+  "path": "/Shared Documents/Plans/launch.md",
+  "maxChars": 20000
+}
+```
+
+Search SharePoint content and pages:
+
+```json
+{
+  "siteId": "site-1",
+  "query": "launch",
+  "limit": 25
+}
+```
 
 #### `search-users`
 
