@@ -153,7 +153,7 @@ get-sharepoint-sites-delta</sub>
 send-shared-mailbox-mail</sub>
 
 **User Management**  
-<sub>list-users, search-users, resolve-person, list-user-presence</sub>
+<sub>list-users, search-users, resolve-person</sub>
 
 ### Canvas-Oriented Custom Tools
 
@@ -167,7 +167,6 @@ do not change the raw Graph tool payloads; they add normalized, ranked, path-fir
 - `get-user`
 - `get-manager`
 - `get-direct-reports`
-- `list-user-presence`
 - `search-people-across-surfaces`
 
 **Teams**
@@ -259,7 +258,6 @@ These custom tools request scopes independently from `endpoints.json` so they wo
 | Tool family                                                                                                                      | Scopes                                                                                                   |
 | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | People resolution (`search-users`, `resolve-person`, `get-user`, `get-manager`, `get-direct-reports`)                            | `User.Read.All`                                                                                          |
-| Presence (`list-user-presence`)                                                                                                  | `Presence.Read.All`                                                                                      |
 | Teams chat resolution (`list-chat-members`, `get-chat-details`, `list-recent-chats`)                                             | `Chat.Read`                                                                                              |
 | Teams participant/message search (`find-chats-by-participant`, `get-chat-context`, `search-messages`)                            | `Chat.Read`, `User.Read.All`, `ChatMessage.Read`, `ChannelMessage.Read.All` as needed                    |
 | Teams channel members (`list-channel-members`)                                                                                   | `ChannelMember.Read.All`                                                                                 |

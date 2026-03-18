@@ -17,6 +17,8 @@ import { taskToolDefinitions } from './custom-tools/tasks.js';
 import { mailToolDefinitions } from './custom-tools/mail.js';
 import { searchToolDefinitions } from './custom-tools/search.js';
 
+const disabledCustomTools = new Set(['list-user-presence']);
+
 const customToolDefinitions: CustomToolDefinition[] = [
   ...peopleToolDefinitions,
   ...teamsToolDefinitions,
@@ -26,7 +28,7 @@ const customToolDefinitions: CustomToolDefinition[] = [
   ...taskToolDefinitions,
   ...mailToolDefinitions,
   ...searchToolDefinitions,
-];
+].filter((definition) => !disabledCustomTools.has(definition.name));
 
 export function getCustomToolDefinitions(): readonly CustomToolDefinition[] {
   return customToolDefinitions;

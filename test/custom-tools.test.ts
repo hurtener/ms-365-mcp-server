@@ -187,11 +187,11 @@ describe('custom Canvas-oriented tools', () => {
     expect(Array.from(handlers.keys()).sort()).toEqual(['list-tasks', 'search-mail']);
   });
 
-  it('adds custom tool scopes when building filtered auth scopes', () => {
+  it('does not include deactivated tools in filtered auth scopes', () => {
     const scopes = buildScopesFromEndpoints(true, 'search-users|list-user-presence');
 
     expect(scopes).toContain('User.Read.All');
-    expect(scopes).toContain('Presence.Read.All');
+    expect(scopes).not.toContain('Presence.Read.All');
     expect(scopes).not.toContain('Chat.Read');
   });
 
